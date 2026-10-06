@@ -1,0 +1,72 @@
+<style>
+  .app{font-family:"Microsoft JhengHei","PingFang TC",sans-serif;background:#f7f7f5;color:#222;border-radius:10px;overflow:hidden;border:1px solid #ddd;font-size:15px}
+  .bar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#fff;border-bottom:1px solid #e5e5e5}
+  .bar b{font-size:16px}
+  .icons span{display:inline-block;margin-left:10px;padding:6px 10px;border-radius:8px;background:#f0f0ee;font-size:13px}
+  .main{padding:18px 16px}
+  .big{display:flex;gap:8px}
+  .big input{flex:1;font-size:17px;padding:12px 14px;border:2px solid #c9c9c4;border-radius:10px;background:#fff}
+  .fmt{display:flex;gap:8px;margin:12px 0}
+  .fmt div{flex:1;text-align:center;padding:12px;border-radius:10px;border:2px solid #c9c9c4;background:#fff;font-size:16px}
+  .fmt .on{border-color:#d33;background:#fff1f0;color:#b22;font-weight:bold}
+  .go{width:100%;padding:14px;border:0;border-radius:10px;background:#d33;color:#fff;font-size:18px;font-weight:bold}
+  .hint{font-size:12.5px;color:#777;margin:6px 2px 0}
+  .q{margin-top:16px}
+  .q h4{margin:0 0 6px;font-size:14px;color:#555}
+  .job{background:#fff;border:1px solid #e3e3e0;border-radius:10px;padding:10px 12px;margin-bottom:6px}
+  .job .t{display:flex;justify-content:space-between;font-size:14px}
+  .job .s{font-size:12.5px;color:#777}
+  .pb{height:8px;background:#eee;border-radius:4px;margin-top:6px;overflow:hidden}
+  .pb i{display:block;height:100%;background:#d33}
+  .done{color:#1a7f37}
+  .side{display:flex}
+  .nav{width:110px;background:#fff;border-right:1px solid #e5e5e5;padding:10px 6px}
+  .nav div{padding:10px;border-radius:8px;margin-bottom:4px;font-size:15px}
+  .nav .on{background:#fff1f0;color:#b22;font-weight:bold}
+  .badge{background:#d33;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-left:4px}
+</style>
+
+<h2>下載畫面要長怎樣?</h2>
+<p class="subtitle">兩種都是同一套功能,差在「轉檔 / 排隊 / 設定」放哪。字故意放大,給家人看的。</p>
+
+<div class="cards">
+  <div class="card" data-choice="single" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="app">
+        <div class="bar"><b>YouTube 下載器</b><div class="icons"><span>🔁 轉檔</span><span>⚙ 設定</span></div></div>
+        <div class="main">
+          <div class="big"><input value="周杰倫 晴天"></div>
+          <div class="hint">貼上網址,或直接打歌名搜尋</div>
+          <div class="fmt"><div class="on">🎵 只要聲音(MP3)</div><div>🎬 影片(MP4)</div></div>
+          <button class="go">搜尋</button>
+          <div class="q"><h4>下載清單</h4>
+            <div class="job"><div class="t"><span>告白氣球</span><span>62%</span></div><div class="pb"><i style="width:62%"></i></div></div>
+            <div class="job"><div class="t"><span>稻香</span><span class="s">排隊中</span></div></div>
+            <div class="job"><div class="t"><span>七里香</span><span class="done">✓ 完成 · 開啟資料夾</span></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>A. 單頁:一個大輸入框 + 下面就是清單</h3><p>家人只會看到一個畫面;轉檔、設定收到右上角。最少需要「找」的東西。</p></div>
+  </div>
+
+  <div class="card" data-choice="sidebar" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="app">
+        <div class="side">
+          <div class="nav"><div class="on">⬇ 下載</div><div>📋 清單<span class="badge">2</span></div><div>🔁 轉檔</div><div>⚙ 設定</div></div>
+          <div class="main" style="flex:1">
+            <div class="big"><input value="周杰倫 晴天"></div>
+            <div class="hint">貼上網址,或直接打歌名搜尋</div>
+            <div class="fmt"><div class="on">🎵 MP3</div><div>🎬 MP4</div></div>
+            <button class="go">搜尋</button>
+            <div class="hint" style="margin-top:14px">下載中的進度在「清單」分頁看</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body"><h3>B. 左側分頁:下載 / 清單 / 轉檔 / 設定</h3><p>每頁比較乾淨,但進度要切分頁才看得到;家人可能不知道東西跑哪去了。</p></div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:14px">我推 A:按下去之後,進度就在同一個畫面往下長,不用學「去哪裡看」。</p>
