@@ -20,6 +20,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             let queue = commands::start_queue(app.handle(), &state);
             app.manage(state);
@@ -34,6 +35,7 @@ pub fn run() {
             commands::list_jobs,
             commands::diagnostics,
             commands::open_folder,
+            commands::convert_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

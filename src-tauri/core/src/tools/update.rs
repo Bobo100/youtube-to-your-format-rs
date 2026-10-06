@@ -375,6 +375,7 @@ mod tests {
                 url: "https://www.youtube.com/watch?v=jNQXAC9IVRw".into(),
                 title: "zoo".into(),
                 format: SaveFormat::Audio,
+                ..Request::default()
             }],
             false,
         );

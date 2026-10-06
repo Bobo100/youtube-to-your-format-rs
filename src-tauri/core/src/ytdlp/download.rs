@@ -14,9 +14,10 @@ use crate::naming::escape_template;
 use crate::process::{self, SpawnError};
 use crate::tools::ToolPaths;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SaveFormat {
+    #[default]
     Audio,
     Video,
 }

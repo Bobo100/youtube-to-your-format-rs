@@ -37,6 +37,31 @@ export const ListIcon = () => (
   </svg>
 );
 
+export const FileIcon = () => (
+  <svg {...common}>
+    <path d="M14 3v4a1 1 0 0 0 1 1h4" />
+    <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z" />
+  </svg>
+);
+
+export const BackIcon = () => (
+  <svg {...common}>
+    <path d="m15 18-6-6 6-6" />
+  </svg>
+);
+
+export const ConvertIcon = () => (
+  <svg {...common}>
+    <path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5" />
+  </svg>
+);
+
+export const CheckIcon = () => (
+  <svg {...common}>
+    <path d="M20 6 9 17l-5-5" />
+  </svg>
+);
+
 export const FolderIcon = () => (
   <svg {...common}>
     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
