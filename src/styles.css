@@ -100,3 +100,150 @@ body {
     opacity: 0.5;
   }
 }
+
+.icon {
+  width: 24px;
+  height: 24px;
+  flex: none;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn.sec {
+  background: var(--card);
+  color: var(--accent);
+  border: 3px solid var(--accent);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.lbl {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+}
+
+.inp {
+  flex: 1;
+  min-width: 0;
+  min-height: 60px;
+  padding: 0 16px;
+  border: 3px solid var(--fg);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--fg);
+  font: inherit;
+  font-size: 1.1rem;
+}
+
+.inp:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.res {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.status {
+  font-weight: bold;
+  margin: 0;
+}
+
+.warn {
+  padding: 14px;
+  border: 2px solid #b45309;
+  border-radius: 14px;
+  background: #fef3c7;
+  color: #7c2d12;
+  font-weight: bold;
+}
+
+.list-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.item {
+  display: flex;
+  gap: 14px;
+  padding: 12px;
+  border: 2px solid #cbd5e1;
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.thumb {
+  position: relative;
+  width: 160px;
+  height: 90px;
+  flex: none;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #1e293b;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumb span {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 80%);
+  color: #fff;
+  font-size: 0.75rem;
+}
+
+.info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ttl {
+  margin: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  margin: 2px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.acts .btn {
+  min-height: 52px;
+  padding: 0 16px;
+  font-size: 0.95rem;
+}

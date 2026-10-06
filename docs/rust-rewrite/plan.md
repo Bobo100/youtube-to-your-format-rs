@@ -66,15 +66,29 @@ Deviation:
 
 ## W03 — 查詢與主畫面卡片(`lookup`)
 
-- [ ] 關鍵字 `ytsearch10:`、單一影片(`v=` 預設 `--no-playlist`)、播放清單 / 頻道(`-I 1:200`、`truncated`)
-- [ ] 主畫面：大輸入框、影片卡片(縮圖用 `i.ytimg.com`、CSP)、「整個清單」「全部存成音樂」
-- [ ] Verify: 參數組裝與網址判斷單元測試;前端 Vitest(網址 / 關鍵字);手動用注音搜尋
+- [x] 關鍵字 `ytsearch10:`、單一影片(`v=` 預設 `--no-playlist`)、播放清單 / 頻道(`-I 1:200`、`truncated`)
+- [x] 主畫面：大輸入框、影片卡片(縮圖用 `i.ytimg.com`、CSP)、「整個清單」「全部存成音樂」
+- [ ] Verify: 參數組裝與網址判斷單元測試;前端 Vitest(網址 / 關鍵字);手動用注音搜尋(gap:注音輸入沒辦法自動化，留給 W09 的手動 QA;這次是用 SendKeys 直接送中文字)
+
+Evidence: PR #4。`npm run rs:test` 36 passed,新增：
+- `Input::parse`:關鍵字、`v=` / `list=` / youtu.be / shorts、沒有 scheme 的連結
+- 所有 yt-dlp 呼叫都帶 `--js-runtimes deno:` 和 `--ffmpeg-location`
+- 搜尋用 `ytsearch10:` operand(查詢字串開頭是 `-` 也不會被當成 flag)
+- Mix 連結預設 `--no-playlist`;選「整個清單」時改成 `-I 1:200`,網址前加 `--`
+- 解析搜尋結果時略過直播;播放清單超過上限標成 truncated
+
+其他驗證:
+- `-- --ignored`:真的搜尋「鄧麗君 月亮代表我的心」,1.6s 回傳卡片
+- `npm test` 6 passed(含時長格式)
+- 手動 debug exe:中文搜尋出現有縮圖、時長、頻道和兩顆按鈕的卡片(截圖);貼上 Mix 連結只列出一首，並出現「整個清單都要」(截圖)
+
+Deviation:網址 / 關鍵字判斷原本打算在前端用 Vitest 測 → 改由 Rust 的 `Input::parse` 判斷，前端只把文字送過去 → 只在一處判斷，不會有兩套規則 → 測試在 `ytdlp::input`。
 
 ## W04 — 下載排隊與進度(`queue`、`ytdlp`)
 
 - [ ] 一次一個的 worker、`job-updated` 整個快照
 - [ ] 進度 JSON(兩條 stream 合併)、`processing` 不定進度
-- [ ] yt-dlp 一律帶 `--js-runtimes deno:<bin>\deno.exe`(W02 留下的缺口)
+- [x] yt-dlp 一律帶 `--js-runtimes deno:<bin>\deno.exe`(W02 留下的缺口)— 已在 W03 用 `ytdlp::base_args` 做好,PR #4 的單元測試涵蓋
 - [ ] 唯一檔名、`-o`、`--no-overwrites --trim-filenames`、`--print after_move:filepath`
 - [ ] 影片格式選擇器 + ffprobe 檢查，非 H.264 才轉;音樂 mp3 + metadata;`cookies.txt`
 - [ ] 取消：結束 Job Object + 清暫存檔

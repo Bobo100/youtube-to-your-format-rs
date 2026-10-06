@@ -17,7 +17,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .manage(state)
-        .invoke_handler(tauri::generate_handler![commands::prepare_tools])
+        .invoke_handler(tauri::generate_handler![commands::prepare_tools, commands::lookup])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

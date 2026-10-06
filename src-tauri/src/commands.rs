@@ -5,6 +5,7 @@ use tokio::sync::Mutex;
 
 use ytf_core::reqwest;
 use ytf_core::tools::{self, ToolPaths};
+use ytf_core::ytdlp::{self, Input, Lookup};
 
 pub struct AppState {
     /// Serializes tool installs: React StrictMode (and impatient double clicks)
@@ -34,4 +35,16 @@ pub async fn prepare_tools(app: AppHandle, state: State<'_, AppState>) -> Result
         eprintln!("prepare_tools failed: {err}");
         err.code().to_owned()
     })
+}
+
+#[tauri::command]
+pub async fn lookup(input: String, whole_playlist: bool) -> Result<Lookup, String> {
+    let parsed = Input::parse(&input).ok_or_else(|| "empty_input".to_owned())?;
+    let paths = ToolPaths::from_env().map_err(|_| "tools_missing".to_owned())?;
+    ytdlp::lookup::lookup(&paths, &parsed, whole_playlist)
+        .await
+        .map_err(|err| {
+            eprintln!("lookup failed: {err}");
+            err.code().to_owned()
+        })
 }
