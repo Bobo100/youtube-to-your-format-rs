@@ -1,0 +1,17 @@
+:root {
+  --fg: #0b1220;
+  --bg: #f8fafc;
+  font-family: "Microsoft JhengHei UI", "Microsoft JhengHei", sans-serif;
+  font-size: 20px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  padding: 20px;
+}
