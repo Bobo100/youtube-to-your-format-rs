@@ -1,0 +1,75 @@
+<style>
+  .app{--fg:#0B1220;--muted:#334155;--bg:#F8FAFC;--card:#FFFFFF;--line:#94A3B8;--accent:#0B5CAD;
+       font-family:"Microsoft JhengHei UI","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--fg);
+       border:1px solid #CBD5E1;border-radius:12px;overflow:hidden;font-size:20px;line-height:1.5}
+  .top{display:flex;align-items:center;gap:10px;padding:12px 18px;background:#fff;border-bottom:2px solid #E2E8F0;font-size:22px;font-weight:bold}
+  .back{font-size:18px;font-weight:bold;padding:6px 12px;min-height:44px;border:2px solid var(--line);border-radius:10px;display:inline-flex;align-items:center}
+  .body{padding:18px}
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:60px;border-radius:12px;font-size:21px;font-weight:bold;border:0;background:var(--accent);color:#fff;margin-top:12px}
+  .btn.sec{background:#fff;color:var(--accent);border:3px solid var(--accent)}
+  .drop{border:3px dashed var(--line);border-radius:14px;padding:22px;text-align:center;background:#fff}
+  .drop b{display:block;font-size:21px}
+  .help{font-size:17px;color:var(--muted)}
+  .chips{display:flex;gap:10px;margin-top:10px}
+  .chips div{flex:1;text-align:center;padding:12px 0;border:3px solid var(--line);border-radius:12px;background:#fff;font-weight:bold}
+  .chips .on{border-color:var(--accent);background:#E0EDFA;color:#073B70}
+  .pb{height:18px;background:#E2E8F0;border-radius:9px;overflow:hidden;border:1px solid var(--line);margin:14px 0 6px}
+  .pb i{display:block;height:100%;background:var(--accent)}
+  .center{text-align:center;padding:26px 18px}
+  .big{font-size:24px;font-weight:bold;margin:8px 0}
+  .warn{background:#FEF3C7;border:2px solid #B45309;border-radius:14px;padding:14px}
+  .warn b{color:#7C2D12;font-size:21px}
+  .set{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:2px solid #E2E8F0}
+  .seg{display:flex;border:2px solid var(--line);border-radius:10px;overflow:hidden;font-size:18px}
+  .seg span{padding:6px 12px}
+  .seg .on{background:var(--accent);color:#fff;font-weight:bold}
+  svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+</style>
+
+<h2>其他幾個畫面(同一套規則)</h2>
+<p class="subtitle">轉檔、第一次開啟、出錯、設定。看哪裡想改。</p>
+
+<div class="cards">
+  <div class="card"><div class="card-image"><div class="app">
+    <div class="top"><span class="back">‹ 回去</span>轉檔</div>
+    <div class="body">
+      <div class="drop"><svg viewBox="0 0 24 24" style="width:36px;height:36px"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/></svg><b>把檔案拖進來</b><span class="help">或按這裡選檔案</span></div>
+      <div style="margin-top:14px;font-weight:bold">要轉成什麼?</div>
+      <div class="chips"><div class="on">音樂 MP3</div><div>影片 MP4</div></div>
+      <div class="help" style="margin-top:6px">其他格式(WAV、M4A…)在「更多」</div>
+      <button class="btn">開始轉檔</button>
+    </div>
+  </div></div><div class="card-body"><h3>轉檔</h3><p>拖檔或選檔 → 選音樂/影片 → 開始。轉完的檔放在原檔旁邊。</p></div></div>
+
+  <div class="card"><div class="card-image"><div class="app">
+    <div class="top">YouTube 下載</div>
+    <div class="center">
+      <svg viewBox="0 0 24 24" style="width:48px;height:48px;color:#0B5CAD"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>
+      <div class="big">第一次使用,正在準備…</div>
+      <div class="pb"><i style="width:40%"></i></div>
+      <div class="help">大約需要 1 分鐘,請不要關掉視窗</div>
+    </div>
+  </div></div><div class="card-body"><h3>第一次開啟</h3><p>自動下載 ffmpeg / yt-dlp。之後啟動時更新在背景跑,不打擾。</p></div></div>
+
+  <div class="card"><div class="card-image"><div class="app">
+    <div class="top">YouTube 下載</div>
+    <div class="body">
+      <div class="warn"><b>這首現在存不下來</b>
+        <div style="margin-top:6px">程式已經自動更新過了,還是不行。可能是 YouTube 改了東西。</div>
+        <button class="btn sec" style="background:#fff">複製問題資訊(傳給 Bobo)</button>
+        <button class="btn">再試一次</button>
+      </div>
+    </div>
+  </div></div><div class="card-body"><h3>出錯</h3><p>只說人話 + 能做的事。技術細節藏在「複製問題資訊」裡。</p></div></div>
+
+  <div class="card"><div class="card-image"><div class="app">
+    <div class="top"><span class="back">‹ 回去</span>設定</div>
+    <div class="body" style="padding-top:4px">
+      <div class="set"><span>存到哪裡</span><span class="back">下載 › YouTube</span></div>
+      <div class="set"><span>字的大小</span><div class="seg"><span>大</span><span class="on">特大</span></div></div>
+      <div class="set"><span>畫面顏色</span><div class="seg"><span class="on">亮</span><span>暗</span></div></div>
+      <div class="set"><span>語言</span><div class="seg"><span class="on">中文</span><span>English</span></div></div>
+      <div class="help" style="margin-top:10px">版本 2.0.0 · 下載工具 2026.08.19(自動更新)</div>
+    </div>
+  </div></div><div class="card-body"><h3>設定</h3><p>只留 4 項。新增「字的大小」;預設亮色(不跟系統),長輩較好讀。</p></div></div>
+</div>
