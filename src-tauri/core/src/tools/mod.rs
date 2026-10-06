@@ -7,6 +7,8 @@ mod install;
 mod manifest;
 mod release;
 mod state;
+pub mod update;
+pub mod version;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -19,6 +21,7 @@ use crate::process::{self, SpawnError};
 use download::with_retry;
 use install::{extract_7z, extract_zip, extract_zip_tree, new_path, replace_with_new, rollback};
 pub(crate) use install::retry_io;
+pub use checksum::sha256_file;
 use manifest::{Pinned, DENO, FFMPEG};
 use state::ToolState;
 
@@ -180,7 +183,8 @@ pub async fn prepare(
         };
         match tool {
             Tool::Ytdlp => {
-                let version = install_ytdlp(paths, client, &report).await?;
+                let release = with_retry(|| ytdlp_release(client, manifest::YTDLP_STABLE_REPO)).await?;
+                let version = install_ytdlp(paths, client, &release, &report).await?;
                 verify_or_rollback(&[(paths.ytdlp(), "--version", paths.ytdlp_dir())]).await?;
                 // Earlier builds installed the onefile exe directly in bin/.
                 let _ = tokio::fs::remove_file(paths.bin.join("yt-dlp.exe")).await;
@@ -227,17 +231,19 @@ async fn replace_all(targets: Vec<PathBuf>) -> Result<(), ToolError> {
         .map_err(ToolError::from)
 }
 
-async fn install_ytdlp(paths: &ToolPaths, client: &Client, report: &Report<'_>) -> Result<String, ToolError> {
-    let release = with_retry(|| {
-        release::latest(
-            client,
-            manifest::YTDLP_STABLE_REPO,
-            manifest::YTDLP_ASSET,
-            manifest::YTDLP_SUMS_ASSET,
-        )
-    })
-    .await?;
-    let sha256 = with_retry(|| release::expected_sha256(client, &release, manifest::YTDLP_ASSET)).await?;
+async fn ytdlp_release(client: &Client, repo: &str) -> Result<release::Release, ToolError> {
+    release::latest(client, repo, manifest::YTDLP_ASSET, manifest::YTDLP_SUMS_ASSET).await
+}
+
+/// Downloads, verifies and swaps in the onedir build. The caller verifies it
+/// runs (and rolls back) and must ensure no yt-dlp is running meanwhile.
+async fn install_ytdlp(
+    paths: &ToolPaths,
+    client: &Client,
+    release: &release::Release,
+    report: &Report<'_>,
+) -> Result<String, ToolError> {
+    let sha256 = with_retry(|| release::expected_sha256(client, release, manifest::YTDLP_ASSET)).await?;
     let archive = paths.bin.join(manifest::YTDLP_ASSET);
     let last = AtomicU64::new(0);
     download::download_verified(client, &release.exe_url, &archive, &sha256, &throttled(report, &last)).await?;
@@ -252,7 +258,7 @@ async fn install_ytdlp(paths: &ToolPaths, client: &Client, report: &Report<'_>) 
     }
     replace_all(vec![paths.ytdlp_dir()]).await?;
     let _ = tokio::fs::remove_file(&archive).await;
-    Ok(release.version)
+    Ok(release.version.clone())
 }
 
 async fn install_pinned(
@@ -351,6 +357,7 @@ mod tests {
             ytdlp: Some("2026.08.19".into()),
             ffmpeg: Some(FFMPEG.version.into()),
             deno: Some(DENO.version.into()),
+            ytdlp_checked_at: None,
         };
         assert!(needed(&paths, &state).is_empty());
 
@@ -369,6 +376,7 @@ mod tests {
             ytdlp: Some("2026.08.19".into()),
             ffmpeg: Some(FFMPEG.version.into()),
             deno: Some(DENO.version.into()),
+            ytdlp_checked_at: None,
         };
         assert_eq!(needed(&paths, &state), vec![Tool::Ffmpeg]);
     }

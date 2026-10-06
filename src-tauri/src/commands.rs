@@ -5,10 +5,12 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
 
+use ytf_core::applog;
 use ytf_core::folders;
 use ytf_core::queue::{Job, JobId, Queue, Request, SaveFormat};
 use ytf_core::reqwest;
 use ytf_core::runner::YtDlpRunner;
+use ytf_core::tools::update::Updater;
 use ytf_core::tools::{self, ToolPaths};
 use ytf_core::ytdlp::{self, Input, Lookup};
 
@@ -17,13 +19,19 @@ pub struct AppState {
     /// would otherwise run two installs into the same files.
     tools_lock: Mutex<()>,
     client: reqwest::Client,
+    paths: ToolPaths,
+    updater: Arc<Updater>,
 }
 
 impl AppState {
-    pub fn new() -> reqwest::Result<Self> {
+    pub fn new() -> Result<Self, String> {
+        let client = tools::http_client().map_err(|e| e.to_string())?;
+        let paths = ToolPaths::from_env().map_err(|e| e.to_string())?;
         Ok(Self {
             tools_lock: Mutex::new(()),
-            client: tools::http_client()?,
+            updater: Updater::new(paths.clone(), client.clone()),
+            client,
+            paths,
         })
     }
 }
@@ -31,26 +39,58 @@ impl AppState {
 #[tauri::command]
 pub async fn prepare_tools(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let _guard = state.tools_lock.lock().await;
-    let paths = ToolPaths::from_env().map_err(|_| "tools_missing".to_owned())?;
-    tools::prepare(&paths, &state.client, &|progress| {
+    tools::prepare(&state.paths, &state.client, &|progress| {
         let _ = app.emit("tools-progress", progress);
     })
     .await
     .map_err(|err| {
-        eprintln!("prepare_tools failed: {err}");
+        applog!("prepare_tools failed: {err}");
         err.code().to_owned()
-    })
+    })?;
+    let updater = Arc::clone(&state.updater);
+    let paths = state.paths.clone();
+    tauri::async_runtime::spawn(async move {
+        log_tool_versions(&paths).await;
+        match updater.check_daily().await {
+            Ok(true) => applog!("daily check installed a newer yt-dlp"),
+            Ok(false) => {}
+            Err(err) => applog!("daily yt-dlp check failed: {err}"),
+        }
+    });
+    Ok(())
+}
+
+/// Versions and hashes of the installed tools, so a log shows exactly what ran.
+async fn log_tool_versions(paths: &ToolPaths) {
+    let state = std::fs::read_to_string(paths.bin.join("state.json")).unwrap_or_default();
+    applog!("app {} tools {}", env!("CARGO_PKG_VERSION"), state.split_whitespace().collect::<String>());
+    for exe in [paths.ytdlp(), paths.ffmpeg(), paths.ffprobe(), paths.deno()] {
+        let hash = tokio::task::spawn_blocking({
+            let exe = exe.clone();
+            move || tools::sha256_file(&exe)
+        })
+        .await;
+        match hash {
+            Ok(Ok(hash)) => applog!("{} sha256 {hash}", exe.display()),
+            _ => applog!("{} could not be hashed", exe.display()),
+        }
+    }
 }
 
 #[tauri::command]
-pub async fn lookup(input: String, whole_playlist: bool) -> Result<Lookup, String> {
+pub async fn lookup(state: State<'_, AppState>, input: String, whole_playlist: bool) -> Result<Lookup, String> {
     let parsed = Input::parse(&input).ok_or_else(|| "empty_input".to_owned())?;
-    let paths = ToolPaths::from_env().map_err(|_| "tools_missing".to_owned())?;
     let searching = matches!(parsed, Input::Search(_));
-    ytdlp::lookup::lookup(&paths, &parsed, whole_playlist)
+    let updater = &state.updater;
+    let attempt = || async {
+        let _running = updater.running().await;
+        ytdlp::lookup::lookup(&state.paths, &parsed, whole_playlist).await
+    };
+    updater
+        .with_repair(attempt, &|| applog!("lookup looks broken; updating yt-dlp"))
         .await
         .map_err(|err| {
-            eprintln!("lookup failed: {err}");
+            applog!("lookup failed: {err}");
             err.code(searching).to_owned()
         })
 }
@@ -86,6 +126,34 @@ pub fn list_jobs(queue: State<'_, Queue>) -> Vec<Job> {
     queue.jobs()
 }
 
+/// Text for "複製問題資訊": what failed and the recent log, for Bobo to read.
+#[tauri::command]
+pub fn diagnostics(queue: State<'_, Queue>, state: State<'_, AppState>, id: Option<JobId>) -> String {
+    let job = id.and_then(|id| queue.jobs().into_iter().find(|job| job.id == id));
+    let tools = std::fs::read_to_string(state.paths.bin.join("state.json")).unwrap_or_default();
+    let mut text = format!(
+        "youtube-to-your-format {}\nWindows {}\ntools: {}\n",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::ARCH,
+        tools.split_whitespace().collect::<String>()
+    );
+    if let Some(job) = job {
+        text.push_str(&format!(
+            "\njob: {} [{:?}] {:?} -> {}\nurl: {}\n",
+            job.title,
+            job.format,
+            job.state,
+            job.error.as_deref().unwrap_or("-"),
+            job.url
+        ));
+        if let Some(detail) = queue.detail(job.id) {
+            text.push_str(&format!("\n{detail}\n"));
+        }
+    }
+    text.push_str(&format!("\n--- log ---\n{}\n", ytf_core::log::tail(60)));
+    text
+}
+
 /// Only reveals files this app produced, so the frontend cannot open arbitrary
 /// paths. If the file was moved or deleted, opens the folder it was saved in.
 #[tauri::command]
@@ -105,14 +173,17 @@ pub fn open_folder(queue: State<'_, Queue>, id: JobId) -> Result<(), String> {
         tauri_plugin_opener::open_path(dir, None::<&str>)
     };
     result.map_err(|err| {
-        eprintln!("opening the folder failed: {err}");
+        applog!("opening the folder failed: {err}");
         "open_failed".to_owned()
     })
 }
 
-pub fn start_queue(app: &AppHandle) -> Queue {
-    let paths = ToolPaths::from_env().expect("LOCALAPPDATA is set on Windows");
-    let runner = YtDlpRunner { paths, output_dir: Box::new(folders::default_output_dir) };
+pub fn start_queue(app: &AppHandle, state: &AppState) -> Queue {
+    let runner = YtDlpRunner {
+        paths: state.paths.clone(),
+        updater: Arc::clone(&state.updater),
+        output_dir: Box::new(folders::default_output_dir),
+    };
     let emitter = app.clone();
     let (queue, worker) = Queue::new(Arc::new(runner), move |job: &Job| {
         let _ = emitter.emit("job-updated", job);

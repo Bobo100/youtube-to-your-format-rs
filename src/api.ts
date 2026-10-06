@@ -44,7 +44,7 @@ export function lookup(input: string, wholePlaylist = false): Promise<Lookup> {
   return invoke("lookup", { input, wholePlaylist });
 }
 
-export type JobState = "queued" | "downloading" | "processing" | "done" | "failed" | "canceled";
+export type JobState = "queued" | "downloading" | "processing" | "updating" | "done" | "failed" | "canceled";
 
 export type Job = {
   id: number;
@@ -83,4 +83,9 @@ export function openFolder(id: number): Promise<void> {
 
 export function onJobUpdated(handler: (job: Job) => void): Promise<UnlistenFn> {
   return listen<Job>("job-updated", (event) => handler(event.payload));
+}
+
+/** Plain-text report for Bobo: versions, what failed, recent log. */
+export function diagnostics(id?: number): Promise<string> {
+  return invoke("diagnostics", { id: id ?? null });
 }

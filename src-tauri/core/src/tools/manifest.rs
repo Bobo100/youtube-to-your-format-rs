@@ -24,6 +24,8 @@ pub const DENO: Pinned = Pinned {
 };
 
 pub const YTDLP_STABLE_REPO: &str = "yt-dlp/yt-dlp";
+/// Fixes for YouTube changes often land here a day or more before a stable release.
+pub const YTDLP_NIGHTLY_REPO: &str = "yt-dlp/yt-dlp-nightly-builds";
 /// The onedir build (exe + `_internal/`), not the onefile `yt-dlp.exe`.
 pub const YTDLP_ASSET: &str = "yt-dlp_win.zip";
 pub const YTDLP_SUMS_ASSET: &str = "SHA2-256SUMS";

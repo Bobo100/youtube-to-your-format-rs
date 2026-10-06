@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { cancelJob, openFolder, type Job } from "../api";
+import { cancelJob, diagnostics, openFolder, type Job } from "../api";
 import { errorMessage, t } from "../i18n";
 import { FolderIcon } from "../icons";
 import { isActive, jobStateText, jobStatusText } from "../jobs";
@@ -13,6 +13,7 @@ export function JobStatus({ job, onRetry }: Props) {
   const measurable = job.state === "downloading" && job.progress !== null;
   const primary = useRef<HTMLButtonElement>(null);
   const [openError, setOpenError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // The button that was pressed disappears when the state changes (save → cancel →
   // open folder), which drops keyboard focus to <body>. Hand it to the new button.
@@ -20,6 +21,13 @@ export function JobStatus({ job, onRetry }: Props) {
     const lost = !document.activeElement || document.activeElement === document.body;
     if (lost) primary.current?.focus();
   }, [job.state]);
+
+  const copyDiagnostics = () => {
+    diagnostics(job.id)
+      .then((text) => navigator.clipboard.writeText(text))
+      .then(() => setCopied(true))
+      .catch((err: unknown) => console.error("copy failed", err));
+  };
 
   const open = () => {
     setOpenError(null);
@@ -66,7 +74,17 @@ export function JobStatus({ job, onRetry }: Props) {
             {t("retry")}
           </button>
         )}
+        {job.state === "failed" && (
+          <button className="btn sec" onClick={copyDiagnostics}>
+            {t("copyDiagnostics")}
+          </button>
+        )}
       </div>
+      {copied && (
+        <p className="status ok" role="status">
+          {t("copied")}
+        </p>
+      )}
     </div>
   );
 }

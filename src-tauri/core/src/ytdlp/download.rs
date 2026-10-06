@@ -7,7 +7,9 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio_util::sync::CancellationToken;
 
 use super::progress::{LineEvent, ProgressTracker, PATH_PREFIX, PROGRESS_PREFIX};
-use super::{base_args, is_network_failure};
+use super::base_args;
+use super::errors::classify;
+use crate::tools::update::NeedsNewYtdlp;
 use crate::naming::escape_template;
 use crate::process::{self, SpawnError};
 use crate::tools::ToolPaths;
@@ -48,20 +50,36 @@ pub enum DownloadError {
 }
 
 impl DownloadError {
-    /// Coarse mapping until W05's full yt-dlp error classifier lands.
     pub fn code(&self) -> &'static str {
         match self {
             Self::Spawn(SpawnError::Blocked(_)) => "tool_blocked",
             Self::Spawn(SpawnError::Missing(_)) => "tools_missing",
-            Self::Failed { stderr } if stderr.contains("Requested format is not available") => {
-                "format_unavailable"
-            }
-            Self::Failed { stderr } if is_network_failure(stderr) => "network",
+            Self::Spawn(SpawnError::TimedOut(_)) => "network",
+            Self::Failed { stderr } => classify(stderr).code(),
             Self::Io(e) if e.kind() == std::io::ErrorKind::StorageFull => "disk_full",
             Self::Canceled => "canceled",
-            _ => "download_failed",
+            _ => "extractor",
         }
     }
+
+    /// Last lines of yt-dlp's stderr, for "複製問題資訊".
+    pub fn detail(&self) -> String {
+        match self {
+            Self::Failed { stderr } => tail(stderr, 30),
+            other => other.to_string(),
+        }
+    }
+}
+
+impl NeedsNewYtdlp for DownloadError {
+    fn needs_new_ytdlp(&self) -> bool {
+        matches!(self, Self::Failed { stderr } if classify(stderr).may_be_fixed_by_update())
+    }
+}
+
+pub(crate) fn tail(text: &str, lines: usize) -> String {
+    let all: Vec<&str> = text.lines().collect();
+    all[all.len().saturating_sub(lines)..].join("\n")
 }
 
 /// `cookies.txt` exported from a browser, for videos that need a login.
@@ -232,6 +250,10 @@ mod tests {
         let fail = |s: &str| DownloadError::Failed { stderr: s.into() }.code();
         assert_eq!(fail("ERROR: [youtube] x: Requested format is not available"), "format_unavailable");
         assert_eq!(fail("ERROR: Unable to download webpage: getaddrinfo failed"), "network");
-        assert_eq!(fail("ERROR: [youtube] x: Video unavailable"), "download_failed");
+        assert_eq!(fail("ERROR: [youtube] x: Video unavailable"), "unavailable");
+        assert_eq!(fail("ERROR: [youtube] x: nsig extraction failed"), "extractor");
+        let broken = DownloadError::Failed { stderr: "ERROR: [youtube] x: nsig extraction failed".into() };
+        assert!(broken.needs_new_ytdlp());
+        assert!(!DownloadError::Failed { stderr: "ERROR: [youtube] x: Private video".into() }.needs_new_ytdlp());
     }
 }
