@@ -30,7 +30,7 @@ Deviation: 驗證視窗原本用 `npm run tauri dev` → 改用 `npm run rs:buil
 - [x] ffmpeg:選定固定版本、確認含 ffprobe(removed from scope: 重新上傳到 `tools-ffmpeg-<版本>` → 改直接用 GyanD,見 Deviation)
 - [x] Deno:選定版本並確認符合 yt-dlp 最低需求
 - [x] 三個工具的下載(續傳、重試)、SHA-256 驗證、解壓到 `%LOCALAPPDATA%\youtube-to-your-formatin\`
-- [ ] `--js-runtimes` 指向 Deno(gap:要在 W04 組 yt-dlp 參數時加上，這裡只裝好 Deno)
+- [x] `--js-runtimes` 指向 Deno — W03 PR #4 用 `ytdlp::base_args` 做好
 - [x] 第一次準備畫面 + `tools-progress`
 - [x] Verify: 單元測試(SHA2-256SUMS 解析、驗證；版本比較移到 W05);手動：刪掉 `bin\` 後重開會重新準備，中途斷網可續傳;全程無 console 視窗
 
@@ -78,9 +78,11 @@ Evidence: PR #4。`npm run rs:test` 36 passed,新增：
 - 解析搜尋結果時略過直播;播放清單超過上限標成 truncated
 
 其他驗證:
-- `-- --ignored`:真的搜尋「鄧麗君 月亮代表我的心」,1.6s 回傳卡片
+- `-- --ignored`:真的搜尋「鄧麗君 月亮代表我的心」,1.6s 回傳卡片；真的查 `@YouTube` 頻道首頁，只回傳影片
 - `npm test` 6 passed(含時長格式)
-- 手動 debug exe:中文搜尋出現有縮圖、時長、頻道和兩顆按鈕的卡片(截圖);貼上 Mix 連結只列出一首，並出現「整個清單都要」(截圖)
+- 手動 debug exe:中文搜尋出現有縮圖、時長、頻道和兩顆按鈕的卡片(截圖);貼上 Mix 連結只列出一首，並出現「整個清單都要」(截圖);貼上「看這個頻道 https://www.youtube.com/@TED」列出 200 部影片並顯示截斷提示(截圖);不存在的 handle 顯示「找不到…請確認網址」,不是網路錯誤
+
+對抗性 review 修正：上述 lookup 邊界情況、「整個清單」改用當初的網址、字級全部 ≥ 1rem、accent 加深到 8.9:1、卡片邊框 4.8:1、查詢中按鈕用 `aria-disabled`(不丟焦點)、常駐 live region、存檔按鈕在 W04 之前 disabled
 
 Deviation:網址 / 關鍵字判斷原本打算在前端用 Vitest 測 → 改由 Rust 的 `Input::parse` 判斷，前端只把文字送過去 → 只在一處判斷，不會有兩套規則 → 測試在 `ytdlp::input`。
 

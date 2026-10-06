@@ -51,8 +51,8 @@ export default function App() {
         {phase === "preparing" ? (
           <Preparing progress={progress} error={error} onRetry={retry} />
         ) : (
-          // Saving arrives with the download queue (W04).
-          <Home onSave={() => {}} />
+          // Save buttons stay disabled until the download queue lands (W04).
+          <Home />
         )}
       </main>
     </div>

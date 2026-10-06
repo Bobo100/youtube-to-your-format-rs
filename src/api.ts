@@ -33,6 +33,7 @@ export type Lookup = {
   title: string | null;
   items: VideoCard[];
   truncated: boolean;
+  skipped: number;
   hasPlaylist: boolean;
 };
 

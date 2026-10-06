@@ -41,10 +41,11 @@ pub async fn prepare_tools(app: AppHandle, state: State<'_, AppState>) -> Result
 pub async fn lookup(input: String, whole_playlist: bool) -> Result<Lookup, String> {
     let parsed = Input::parse(&input).ok_or_else(|| "empty_input".to_owned())?;
     let paths = ToolPaths::from_env().map_err(|_| "tools_missing".to_owned())?;
+    let searching = matches!(parsed, Input::Search(_));
     ytdlp::lookup::lookup(&paths, &parsed, whole_playlist)
         .await
         .map_err(|err| {
             eprintln!("lookup failed: {err}");
-            err.code().to_owned()
+            err.code(searching).to_owned()
         })
 }

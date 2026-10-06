@@ -4,7 +4,8 @@
   --bg: #f8fafc;
   --card: #ffffff;
   --line: #94a3b8;
-  --accent: #0b5cad;
+  /* 8.9:1 on white: AAA even for the 18px size and bold button text */
+  --accent: #084a8c;
   --accent-ink: #ffffff;
   font-family: "Microsoft JhengHei UI", "Microsoft JhengHei", sans-serif;
   font-size: 20px;
@@ -42,7 +43,7 @@ body {
 }
 
 .help {
-  font-size: 0.85rem;
+  font-size: 1rem;
   color: var(--muted);
 }
 
@@ -120,9 +121,19 @@ body {
   border: 3px solid var(--accent);
 }
 
-.btn:disabled {
+.btn:disabled,
+.btn[aria-disabled="true"] {
   opacity: 0.6;
   cursor: default;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .lbl {
@@ -186,7 +197,8 @@ body {
   display: flex;
   gap: 14px;
   padding: 12px;
-  border: 2px solid #cbd5e1;
+  /* 4.8:1 against white so low-vision users can see where a card ends */
+  border: 2px solid #64748b;
   border-radius: 14px;
   background: var(--card);
 }
@@ -215,7 +227,7 @@ body {
   border-radius: 4px;
   background: rgb(0 0 0 / 80%);
   color: #fff;
-  font-size: 0.75rem;
+  font-size: 1rem;
 }
 
 .info {
@@ -231,7 +243,7 @@ body {
 
 .meta {
   margin: 2px 0 0;
-  font-size: 0.85rem;
+  font-size: 1rem;
   color: var(--muted);
 }
 
@@ -245,5 +257,5 @@ body {
 .acts .btn {
   min-height: 52px;
   padding: 0 16px;
-  font-size: 0.95rem;
+  font-size: 1rem;
 }

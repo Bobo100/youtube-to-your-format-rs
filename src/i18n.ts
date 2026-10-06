@@ -16,7 +16,12 @@ const zh = {
   wholePlaylist: "整個清單都要",
   playlistCount: "共 {count} 首",
   playlistTruncated: "清單太長，只列出前 {count} 首",
+  skippedCount: "有 {count} 首是私人、會員限定或直播，沒辦法下載，已略過",
+  foundCount: "找到 {count} 個結果",
   "error.lookup_failed": "找不到這部影片，請確認網址是否正確",
+  "error.search_failed": "現在搜尋不到，請過一會兒再試",
+  "error.unavailable": "這部影片沒辦法下載（可能是直播、私人或會員限定）",
+  "error.not_youtube": "這不是 YouTube 的網址",
   "error.empty_input": "請先打字或貼上網址",
   "error.network": "連不上網路，請檢查網路後再試一次",
   "error.tool_blocked": "下載工具被防毒軟體擋住了",
@@ -34,7 +39,7 @@ export function t(key: MessageKey, params: Record<string, string | number> = {})
   );
 }
 
-export function errorMessage(code: string): string {
+export function errorMessage(code: string, fallback: MessageKey = "error.tools_missing"): string {
   const key = `error.${code}` as MessageKey;
-  return key in zh ? t(key) : t("error.tools_missing");
+  return key in zh ? t(key) : t(fallback);
 }
