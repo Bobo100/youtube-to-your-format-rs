@@ -17,7 +17,7 @@ export function OtherJobs({ jobs, onRetry }: Props) {
         <article key={job.id} className="item compact">
           <div className="info">
             <h3 className="ttl">{job.title}</h3>
-            <JobStatus job={job} onRetry={() => onRetry(job)} />
+            <JobStatus key={job.id} job={job} onRetry={() => onRetry(job)} />
           </div>
         </article>
       ))}

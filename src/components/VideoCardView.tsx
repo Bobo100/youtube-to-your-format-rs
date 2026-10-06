@@ -23,7 +23,7 @@ export function VideoCardView({ card, job, onSave }: Props) {
       <div className="info">
         <h3 className="ttl">{card.title}</h3>
         {card.channel && <p className="meta">{card.channel}</p>}
-        {job && <JobStatus job={job} onRetry={() => onSave(card, job.format)} />}
+        {job && <JobStatus key={job.id} job={job} onRetry={() => onSave(card, job.format)} />}
         {showSaveButtons && !(job && isActive(job)) && (
           <div className="acts">
             <button className={job?.state === "done" ? "btn sec" : "btn"} onClick={() => onSave(card, "audio")}>

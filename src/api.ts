@@ -89,3 +89,8 @@ export function onJobUpdated(handler: (job: Job) => void): Promise<UnlistenFn> {
 export function diagnostics(id?: number): Promise<string> {
   return invoke("diagnostics", { id: id ?? null });
 }
+
+/** Fired when a lookup failed like a YouTube change and yt-dlp is being updated. */
+export function onLookupUpdating(handler: () => void): Promise<UnlistenFn> {
+  return listen("lookup-updating", () => handler());
+}

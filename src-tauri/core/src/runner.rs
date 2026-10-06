@@ -69,12 +69,15 @@ impl YtDlpRunner {
             }
             result
         };
-        let result = self.updater.with_repair(attempt, &|| update(RunUpdate::Updating)).await;
+        let result = self.updater.with_repair(attempt, &|| update(RunUpdate::Updating), Some(cancel)).await;
+        if cancel.is_cancelled() {
+            return RunOutcome::Canceled;
+        }
         let path = match result {
             Ok(path) => path,
             Err(DownloadError::Canceled) => return RunOutcome::Canceled,
             Err(err) => {
-                applog!("download {} failed: {err}", job.url);
+                applog!("download {} failed: {}", job.url, err.code());
                 return RunOutcome::Failed { code: err.code(), detail: err.detail() };
             }
         };

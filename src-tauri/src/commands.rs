@@ -1,9 +1,10 @@
 //! The only interface the frontend can call (contract: docs/rust-rewrite/design.md).
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, State};
-use tokio::sync::Mutex;
 
 use ytf_core::applog;
 use ytf_core::folders;
@@ -14,13 +15,15 @@ use ytf_core::tools::update::Updater;
 use ytf_core::tools::{self, ToolPaths};
 use ytf_core::ytdlp::{self, Input, Lookup};
 
+/// The daily check runs at most every 6 hours while the app stays open for days.
+const UPDATE_POLL: Duration = Duration::from_secs(6 * 60 * 60);
+
 pub struct AppState {
-    /// Serializes tool installs: React StrictMode (and impatient double clicks)
-    /// would otherwise run two installs into the same files.
-    tools_lock: Mutex<()>,
     client: reqwest::Client,
     paths: ToolPaths,
     updater: Arc<Updater>,
+    /// `prepare_tools` runs again after a window reload; start the poller once.
+    poller_started: AtomicBool,
 }
 
 impl AppState {
@@ -28,35 +31,46 @@ impl AppState {
         let client = tools::http_client().map_err(|e| e.to_string())?;
         let paths = ToolPaths::from_env().map_err(|e| e.to_string())?;
         Ok(Self {
-            tools_lock: Mutex::new(()),
             updater: Updater::new(paths.clone(), client.clone()),
             client,
             paths,
+            poller_started: AtomicBool::new(false),
         })
     }
 }
 
 #[tauri::command]
 pub async fn prepare_tools(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    let _guard = state.tools_lock.lock().await;
-    tools::prepare(&state.paths, &state.client, &|progress| {
-        let _ = app.emit("tools-progress", progress);
-    })
-    .await
-    .map_err(|err| {
-        applog!("prepare_tools failed: {err}");
-        err.code().to_owned()
-    })?;
-    let updater = Arc::clone(&state.updater);
-    let paths = state.paths.clone();
-    tauri::async_runtime::spawn(async move {
-        log_tool_versions(&paths).await;
-        match updater.check_daily().await {
-            Ok(true) => applog!("daily check installed a newer yt-dlp"),
-            Ok(false) => {}
-            Err(err) => applog!("daily yt-dlp check failed: {err}"),
-        }
-    });
+    {
+        // One owner for bin\ (also serializes StrictMode's double call); the write
+        // gate only when something will be installed, so a reload during a
+        // download does not wait for it to finish.
+        let _files = state.updater.files().await;
+        let _swap = if tools::needs_install(&state.paths) { Some(state.updater.exclusive().await) } else { None };
+        tools::prepare(&state.paths, &state.client, &|progress| {
+            let _ = app.emit("tools-progress", progress);
+        })
+        .await
+        .map_err(|err| {
+            applog!("prepare_tools failed: {err}");
+            err.code().to_owned()
+        })?;
+    }
+    if !state.poller_started.swap(true, Ordering::Relaxed) {
+        let updater = Arc::clone(&state.updater);
+        let paths = state.paths.clone();
+        tauri::async_runtime::spawn(async move {
+            log_tool_versions(&paths).await;
+            loop {
+                match updater.check_daily().await {
+                    Ok(true) => applog!("daily check installed a newer yt-dlp"),
+                    Ok(false) => {}
+                    Err(err) => applog!("daily yt-dlp check failed: {err}"),
+                }
+                tokio::time::sleep(UPDATE_POLL).await;
+            }
+        });
+    }
     Ok(())
 }
 
@@ -78,7 +92,12 @@ async fn log_tool_versions(paths: &ToolPaths) {
 }
 
 #[tauri::command]
-pub async fn lookup(state: State<'_, AppState>, input: String, whole_playlist: bool) -> Result<Lookup, String> {
+pub async fn lookup(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: String,
+    whole_playlist: bool,
+) -> Result<Lookup, String> {
     let parsed = Input::parse(&input).ok_or_else(|| "empty_input".to_owned())?;
     let searching = matches!(parsed, Input::Search(_));
     let updater = &state.updater;
@@ -86,8 +105,12 @@ pub async fn lookup(state: State<'_, AppState>, input: String, whole_playlist: b
         let _running = updater.running().await;
         ytdlp::lookup::lookup(&state.paths, &parsed, whole_playlist).await
     };
+    let on_repair = || {
+        applog!("lookup looks broken; updating yt-dlp");
+        let _ = app.emit("lookup-updating", ());
+    };
     updater
-        .with_repair(attempt, &|| applog!("lookup looks broken; updating yt-dlp"))
+        .with_repair(attempt, &on_repair, None)
         .await
         .map_err(|err| {
             applog!("lookup failed: {err}");
@@ -132,7 +155,7 @@ pub fn diagnostics(queue: State<'_, Queue>, state: State<'_, AppState>, id: Opti
     let job = id.and_then(|id| queue.jobs().into_iter().find(|job| job.id == id));
     let tools = std::fs::read_to_string(state.paths.bin.join("state.json")).unwrap_or_default();
     let mut text = format!(
-        "youtube-to-your-format {}\nWindows {}\ntools: {}\n",
+        "youtube-to-your-format {} ({})\ntools: {}\n",
         env!("CARGO_PKG_VERSION"),
         std::env::consts::ARCH,
         tools.split_whitespace().collect::<String>()

@@ -13,7 +13,7 @@ export function JobStatus({ job, onRetry }: Props) {
   const measurable = job.state === "downloading" && job.progress !== null;
   const primary = useRef<HTMLButtonElement>(null);
   const [openError, setOpenError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"yes" | "failed" | null>(null);
 
   // The button that was pressed disappears when the state changes (save → cancel →
   // open folder), which drops keyboard focus to <body>. Hand it to the new button.
@@ -25,8 +25,11 @@ export function JobStatus({ job, onRetry }: Props) {
   const copyDiagnostics = () => {
     diagnostics(job.id)
       .then((text) => navigator.clipboard.writeText(text))
-      .then(() => setCopied(true))
-      .catch((err: unknown) => console.error("copy failed", err));
+      .then(() => setCopied("yes"))
+      .catch((err: unknown) => {
+        console.error("copy failed", err);
+        setCopied("failed");
+      });
   };
 
   const open = () => {
@@ -81,8 +84,8 @@ export function JobStatus({ job, onRetry }: Props) {
         )}
       </div>
       {copied && (
-        <p className="status ok" role="status">
-          {t("copied")}
+        <p className={copied === "yes" ? "status ok" : "warn"} role="status">
+          {copied === "yes" ? t("copied") : t("copyFailed")}
         </p>
       )}
     </div>

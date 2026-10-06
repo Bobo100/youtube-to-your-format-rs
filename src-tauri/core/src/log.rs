@@ -60,11 +60,17 @@ fn numbered(dir: &Path, n: usize) -> PathBuf {
 }
 
 fn rotate(dir: &Path) {
+    // Move the live file aside first: if something holds it open, keep the
+    // history instead of shifting (and deleting) numbered files on every write.
+    let aside = dir.join("app.rotating.log");
+    if fs::rename(dir.join("app.log"), &aside).is_err() {
+        return;
+    }
     let _ = fs::remove_file(numbered(dir, KEEP - 1));
     for n in (1..KEEP - 1).rev() {
         let _ = fs::rename(numbered(dir, n), numbered(dir, n + 1));
     }
-    let _ = fs::rename(dir.join("app.log"), numbered(dir, 1));
+    let _ = fs::rename(aside, numbered(dir, 1));
 }
 
 fn utc_now() -> String {

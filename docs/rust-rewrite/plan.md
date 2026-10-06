@@ -141,6 +141,8 @@ Evidence: PR #6。`npm run rs:test` 79 passed,新增：
   - 從 issue 抄來的 bot check / 429 / Errno 28
 - 版本比較
 - 修復流程(用寫好劇本的假 update):不需要更新就不試；stable 修好就停；沒有新的 stable 就試 nightly;更新失敗時不重試下載
+- 冷卻與暫停：同一個 channel 30 分鐘內不重查;403 / 429 後整體暫停一小時；每日檢查 24 小時內跳過
+- 錯誤分類補上：清單 / 頻道不存在(NotFound)、本機存檔被擋(LocalIo,不觸發更新)、「content isn’t available, try again later」(BotCheck)
 - log:UTC 時間格式、輪替最多留 5 個檔
 
 `-- --ignored` 9 passed,新增：
@@ -155,7 +157,22 @@ Deviation:
 - `format_unavailable` 原本設計成**不**觸發更新 → 改成也會先試更新 → YouTube 改版常見的症狀之一就是「Requested format is not available」(只給 SABR 串流)→ `errors` 單元測試。
 - 新增錯誤代碼 `NotFound`(HTTP 404、網址格式錯誤)→ 這類錯誤原本會落到 `extractor`,讓打錯的網址也去觸發 yt-dlp 更新。
 - 「新版 yt-dlp 有 regression 就 rollback 到上一版」removed from scope → stable 很少出 regression,而且修復流程本來就會再試 nightly;再加 rollback 需要記住多個舊版本、判斷哪一版「比較好」,複雜度不划算 → 更新後驗證不過時的 rollback(`verify_or_rollback`)仍然保留。
-- 「換檔前取 queue 鎖」實作成 `Updater` 的讀寫鎖：跑 yt-dlp 時拿讀鎖，換版本時拿寫鎖 → 查詢和下載都會被擋到換完為止。
+- 「換檔前取 queue 鎖」實作成 `Updater` 的兩把鎖：
+  - 讀寫鎖：跑 yt-dlp 時拿讀鎖；只在換資料夾和驗證那一下拿寫鎖，下載和解壓都在鎖外做
+  - `files` 鎖：`prepare` 和 updater 共用，`bin\` 與 `state.json` 只有一個人在寫
+
+對抗性 review 修正：
+- 寫鎖範圍縮小
+- 更新冷卻與限流暫停；驗證不過的版本不再重裝
+- 失敗後版本已被換過時，直接用新版重試
+- prepare 與 updater 共用 `files` 鎖
+- 更新中可以取消
+- 搜尋時也顯示「正在更新下載工具」
+- 每 6 小時重跑一次每日檢查
+- 全新安裝時記錄檢查時間
+- log 輪替在檔案被鎖住時不會洗掉歷史
+- 重試的新下載不沿用舊的「已複製」狀態；複製失敗會顯示提示
+- 新增本機存檔被擋的文案
 
 ## W06 — 轉檔(`convert`)
 

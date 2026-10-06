@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { lookup, type Job, type Lookup, type SaveFormat, type VideoCard } from "../api";
+import { useEffect, useState, type FormEvent } from "react";
+import { lookup, onLookupUpdating, type Job, type Lookup, type SaveFormat, type VideoCard } from "../api";
 import { OtherJobs } from "../components/OtherJobs";
 import { VideoCardView } from "../components/VideoCardView";
 import { errorMessage, t } from "../i18n";
@@ -14,7 +14,7 @@ type Props = {
 
 type State =
   | { status: "idle" }
-  | { status: "loading" }
+  | { status: "loading"; updating: boolean }
   | { status: "done"; query: string; result: Lookup }
   | { status: "error"; code: string };
 
@@ -23,9 +23,24 @@ export function Home({ jobs, onSave }: Props) {
   const [state, setState] = useState<State>({ status: "idle" });
   const loading = state.status === "loading";
 
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+    onLookupUpdating(() =>
+      setState((current) => (current.status === "loading" ? { ...current, updating: true } : current)),
+    ).then((unlisten) => {
+      if (cancelled) unlisten();
+      else stop = unlisten;
+    });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, []);
+
   const run = (query: string, wholePlaylist: boolean) => {
     if (!query.trim() || loading) return;
-    setState({ status: "loading" });
+    setState({ status: "loading", updating: false });
     lookup(query, wholePlaylist)
       .then((result) => setState({ status: "done", query, result }))
       .catch((code: unknown) => setState({ status: "error", code: String(code) }));
@@ -64,9 +79,9 @@ export function Home({ jobs, onSave }: Props) {
         {announcement(state)}
       </p>
 
-      {loading && (
+      {state.status === "loading" && (
         <div className="res">
-          <p className="status">{t("finding")}</p>
+          <p className="status">{state.updating ? t("jobUpdating") : t("finding")}</p>
           <div className="bar indeterminate" role="progressbar" aria-label={t("finding")}>
             <i />
           </div>
@@ -92,7 +107,7 @@ export function Home({ jobs, onSave }: Props) {
 }
 
 function announcement(state: State): string {
-  if (state.status === "loading") return t("finding");
+  if (state.status === "loading") return state.updating ? t("jobUpdating") : t("finding");
   if (state.status === "done") {
     return state.result.items.length === 0 ? t("noResults") : t("foundCount", { count: state.result.items.length });
   }
