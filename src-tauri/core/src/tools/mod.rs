@@ -10,14 +10,19 @@ mod state;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use reqwest::Client;
 use serde::Serialize;
 
 use crate::process::{self, SpawnError};
-use install::{extract_7z, extract_zip, new_path, replace_with_new};
+use download::with_retry;
+use install::{extract_7z, extract_zip, new_path, replace_with_new, rollback};
 use manifest::{Pinned, DENO, FFMPEG};
 use state::ToolState;
+
+/// A freshly downloaded exe may sit in an antivirus scan before it runs.
+const VERIFY_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, thiserror::Error)]
 pub enum ToolError {
@@ -25,6 +30,8 @@ pub enum ToolError {
     Network(#[from] reqwest::Error),
     #[error("http status {0}")]
     Http(u16),
+    #[error("server ignored the resume offset")]
+    ResumeMismatch,
     #[error("checksum mismatch: {file}")]
     Checksum { file: String },
     #[error("io: {0}")]
@@ -37,14 +44,35 @@ pub enum ToolError {
     Blocked(String),
     #[error("does not run: {0}")]
     Broken(String),
+    #[error("internal: {0}")]
+    Internal(String),
 }
 
 impl ToolError {
+    /// Worth another attempt: the network or the server may recover.
+    pub fn is_transient(&self) -> bool {
+        match self {
+            Self::Network(_) | Self::ResumeMismatch | Self::Checksum { .. } => true,
+            Self::Http(status) => *status >= 500,
+            _ => false,
+        }
+    }
+
     /// Error code shown to the frontend (wording lives in the i18n table).
     pub fn code(&self) -> &'static str {
+        // ERROR_HANDLE_DISK_FULL 39, ERROR_DISK_FULL 112
+        const DISK_FULL: [i32; 2] = [39, 112];
         match self {
-            Self::Network(_) | Self::Http(_) => "network",
+            // Unauthenticated GitHub API: 60 requests/hour per IP, shared behind CGNAT.
+            Self::Http(403 | 429) => "github_busy",
+            Self::Network(_) | Self::Http(_) | Self::ResumeMismatch => "network",
             Self::Blocked(_) => "tool_blocked",
+            Self::Io(e)
+                if e.kind() == std::io::ErrorKind::StorageFull
+                    || e.raw_os_error().is_some_and(|c| DISK_FULL.contains(&c)) =>
+            {
+                "disk_full"
+            }
             Self::Io(e) if e.kind() == std::io::ErrorKind::PermissionDenied => "tool_blocked",
             _ => "tools_missing",
         }
@@ -104,8 +132,8 @@ pub fn http_client() -> reqwest::Result<Client> {
     Client::builder()
         // GitHub's API rejects requests without a User-Agent.
         .user_agent(concat!("youtube-to-your-format/", env!("CARGO_PKG_VERSION")))
-        .connect_timeout(std::time::Duration::from_secs(15))
-        .read_timeout(std::time::Duration::from_secs(60))
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(60))
         .build()
 }
 
@@ -127,6 +155,8 @@ fn needed(paths: &ToolPaths, state: &ToolState) -> Vec<Tool> {
 }
 
 /// Makes sure all three tools are installed; only downloads what is missing.
+/// Callers must not run two of these at once (the app is single-instance and
+/// serializes calls); files in `bin/` are not locked against other processes.
 pub async fn prepare(
     paths: &ToolPaths,
     client: &Client,
@@ -144,19 +174,18 @@ pub async fn prepare(
         match tool {
             Tool::Ytdlp => {
                 let version = install_ytdlp(paths, client, &report).await?;
-                verify_runs(&paths.ytdlp(), &["--version"]).await?;
+                verify_or_rollback(&[(paths.ytdlp(), "--version")]).await?;
                 state.ytdlp = Some(version);
             }
             Tool::Ffmpeg => {
                 install_pinned(paths, client, &FFMPEG, "ffmpeg.7z", &["ffmpeg.exe", "ffprobe.exe"], &report)
                     .await?;
-                verify_runs(&paths.ffmpeg(), &["-version"]).await?;
-                verify_runs(&paths.ffprobe(), &["-version"]).await?;
+                verify_or_rollback(&[(paths.ffmpeg(), "-version"), (paths.ffprobe(), "-version")]).await?;
                 state.ffmpeg = Some(FFMPEG.version.to_owned());
             }
             Tool::Deno => {
                 install_pinned(paths, client, &DENO, "deno.zip", &["deno.exe"], &report).await?;
-                verify_runs(&paths.deno(), &["--version"]).await?;
+                verify_or_rollback(&[(paths.deno(), "--version")]).await?;
                 state.deno = Some(DENO.version.to_owned());
             }
         }
@@ -178,21 +207,30 @@ fn throttled<'a>(report: &'a Report<'a>, last: &'a AtomicU64) -> impl Fn(u64, Op
     }
 }
 
+async fn replace_all(targets: Vec<PathBuf>) -> Result<(), ToolError> {
+    tokio::task::spawn_blocking(move || targets.iter().try_for_each(|t| replace_with_new(t)))
+        .await
+        .map_err(|e| ToolError::Internal(e.to_string()))?
+        .map_err(ToolError::from)
+}
+
 async fn install_ytdlp(paths: &ToolPaths, client: &Client, report: &Report<'_>) -> Result<String, ToolError> {
-    let release = release::latest(
-        client,
-        manifest::YTDLP_STABLE_REPO,
-        manifest::YTDLP_ASSET,
-        manifest::YTDLP_SUMS_ASSET,
-    )
+    let release = with_retry(|| {
+        release::latest(
+            client,
+            manifest::YTDLP_STABLE_REPO,
+            manifest::YTDLP_ASSET,
+            manifest::YTDLP_SUMS_ASSET,
+        )
+    })
     .await?;
-    let sha256 = release::expected_sha256(client, &release, manifest::YTDLP_ASSET).await?;
+    let sha256 = with_retry(|| release::expected_sha256(client, &release, manifest::YTDLP_ASSET)).await?;
     let target = paths.ytdlp();
     let last = AtomicU64::new(0);
     download::download_verified(client, &release.exe_url, &new_path(&target), &sha256, &throttled(report, &last))
         .await?;
     report("extract", 0, None);
-    replace_with_new(&target)?;
+    replace_all(vec![target]).await?;
     Ok(release.version)
 }
 
@@ -219,24 +257,36 @@ async fn install_pinned(
         }
     })
     .await
-    .map_err(|e| ToolError::Archive(e.to_string()))??;
+    .map_err(|e| ToolError::Internal(e.to_string()))??;
     if found != entries.len() {
         return Err(ToolError::Archive(format!("{archive_name}: found {found}/{}", entries.len())));
     }
-    for entry in entries {
-        replace_with_new(&paths.bin.join(entry))?;
-    }
+    replace_all(entries.iter().map(|e| paths.bin.join(e)).collect()).await?;
     let _ = tokio::fs::remove_file(&archive).await;
     Ok(())
 }
 
-async fn verify_runs(exe: &Path, args: &[&str]) -> Result<(), ToolError> {
+/// Runs each freshly installed exe; if any fails, every one goes back to its
+/// previous version so a bad update never replaces a working tool.
+async fn verify_or_rollback(checks: &[(PathBuf, &str)]) -> Result<(), ToolError> {
+    for (exe, arg) in checks {
+        if let Err(err) = verify_runs(exe, arg).await {
+            let targets: Vec<PathBuf> = checks.iter().map(|(exe, _)| exe.clone()).collect();
+            let _ = tokio::task::spawn_blocking(move || targets.iter().try_for_each(|t| rollback(t))).await;
+            return Err(err);
+        }
+    }
+    Ok(())
+}
+
+async fn verify_runs(exe: &Path, arg: &str) -> Result<(), ToolError> {
     let label = exe.display().to_string();
-    match process::run(process::command(exe).args(args)).await {
+    match process::run(process::command(exe).arg(arg), VERIFY_TIMEOUT).await {
         Ok(out) if out.status.success() => Ok(()),
-        Ok(_) => Err(ToolError::Broken(label)),
-        Err(SpawnError::Blocked(_)) => Err(ToolError::Blocked(label)),
-        Err(SpawnError::Missing(_)) => Err(ToolError::Blocked(label)),
+        Ok(_) | Err(SpawnError::TimedOut(_)) => Err(ToolError::Broken(label)),
+        // The file was just written, so "missing" means it was quarantined.
+        Err(SpawnError::Blocked(_) | SpawnError::Missing(_)) => Err(ToolError::Blocked(label)),
+        Err(SpawnError::Internal(e)) => Err(ToolError::Internal(e.to_string())),
         Err(SpawnError::Other(e)) => Err(ToolError::Io(e)),
     }
 }
@@ -247,6 +297,18 @@ mod tests {
 
     fn touch(path: &Path) {
         std::fs::write(path, b"x").unwrap();
+    }
+
+    #[test]
+    fn error_codes_tell_the_user_what_to_do() {
+        use std::io::{Error, ErrorKind};
+        assert_eq!(ToolError::Http(403).code(), "github_busy");
+        assert_eq!(ToolError::Http(429).code(), "github_busy");
+        assert_eq!(ToolError::Http(502).code(), "network");
+        assert_eq!(ToolError::Io(Error::from_raw_os_error(112)).code(), "disk_full");
+        assert_eq!(ToolError::Io(Error::from(ErrorKind::PermissionDenied)).code(), "tool_blocked");
+        assert_eq!(ToolError::Internal("job".into()).code(), "tools_missing");
+        assert!(ToolError::Http(503).is_transient() && !ToolError::Http(404).is_transient());
     }
 
     #[test]

@@ -6,17 +6,38 @@ use reqwest::{header, Client, StatusCode};
 use tokio::io::AsyncWriteExt;
 
 use super::checksum::sha256_file;
+use super::install::retry_io;
 use super::ToolError;
 
 const ATTEMPTS: u32 = 3;
 
-pub fn part_path(dest: &Path) -> PathBuf {
+/// The partial file is keyed by the expected hash, so a leftover from another
+/// version (after a pin bump or a new yt-dlp release) is never resumed.
+pub fn part_path(dest: &Path, sha256: &str) -> PathBuf {
     let mut name = dest.as_os_str().to_owned();
-    name.push(".part");
+    name.push(format!(".{}.part", &sha256[..sha256.len().min(8)]));
     PathBuf::from(name)
 }
 
-/// Downloads `url` to `dest`, resuming a previous `.part` file, and only moves
+/// Retries transient failures with backoff; permanent ones (4xx) fail at once.
+pub async fn with_retry<T, F, Fut>(mut op: F) -> Result<T, ToolError>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, ToolError>>,
+{
+    let mut attempt = 0;
+    loop {
+        match op().await {
+            Err(err) if err.is_transient() && attempt + 1 < ATTEMPTS => {
+                attempt += 1;
+                tokio::time::sleep(Duration::from_secs(2u64.pow(attempt))).await;
+            }
+            other => return other,
+        }
+    }
+}
+
+/// Downloads `url` to `dest`, resuming a previous partial file, and only moves
 /// it into place once its SHA-256 matches. A mismatch deletes the partial file
 /// so the next attempt starts clean.
 pub async fn download_verified(
@@ -26,17 +47,31 @@ pub async fn download_verified(
     sha256: &str,
     on_progress: &(dyn Fn(u64, Option<u64>) + Sync),
 ) -> Result<(), ToolError> {
-    let mut last_err = None;
-    for attempt in 0..ATTEMPTS {
-        if attempt > 0 {
-            tokio::time::sleep(Duration::from_secs(2u64.pow(attempt))).await;
-        }
-        match try_once(client, url, dest, sha256, on_progress).await {
-            Ok(()) => return Ok(()),
-            Err(err) => last_err = Some(err),
+    remove_stale_parts(dest, sha256).await;
+    with_retry(|| try_once(client, url, dest, sha256, on_progress)).await
+}
+
+async fn remove_stale_parts(dest: &Path, sha256: &str) {
+    let (Some(dir), Some(name)) = (dest.parent(), dest.file_name()) else {
+        return;
+    };
+    let prefix = format!("{}.", name.to_string_lossy());
+    let keep = part_path(dest, sha256);
+    let Ok(mut entries) = tokio::fs::read_dir(dir).await else {
+        return;
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+        if file_name.starts_with(&prefix) && file_name.ends_with(".part") && entry.path() != keep {
+            let _ = tokio::fs::remove_file(entry.path()).await;
         }
     }
-    Err(last_err.expect("at least one attempt"))
+}
+
+fn content_range_start(response: &reqwest::Response) -> Option<u64> {
+    let value = response.headers().get(header::CONTENT_RANGE)?.to_str().ok()?;
+    let range = value.strip_prefix("bytes ")?;
+    range.split('-').next()?.trim().parse().ok()
 }
 
 async fn try_once(
@@ -46,7 +81,7 @@ async fn try_once(
     sha256: &str,
     on_progress: &(dyn Fn(u64, Option<u64>) + Sync),
 ) -> Result<(), ToolError> {
-    let part = part_path(dest);
+    let part = part_path(dest, sha256);
     let mut offset = tokio::fs::metadata(&part).await.map(|m| m.len()).unwrap_or(0);
 
     let mut request = client.get(url);
@@ -56,7 +91,13 @@ async fn try_once(
     let response = request.send().await?;
 
     let append = match response.status() {
-        StatusCode::PARTIAL_CONTENT => true,
+        StatusCode::PARTIAL_CONTENT => {
+            if content_range_start(&response) != Some(offset) {
+                let _ = tokio::fs::remove_file(&part).await;
+                return Err(ToolError::ResumeMismatch);
+            }
+            true
+        }
         StatusCode::RANGE_NOT_SATISFIABLE => {
             // The partial file is already complete (or bogus); let the hash decide.
             return finish(&part, dest, sha256).await;
@@ -91,44 +132,86 @@ async fn try_once(
 }
 
 async fn finish(part: &Path, dest: &Path, sha256: &str) -> Result<(), ToolError> {
-    let part_owned = part.to_owned();
-    let actual = tokio::task::spawn_blocking(move || sha256_file(&part_owned))
-        .await
-        .map_err(|e| ToolError::Io(std::io::Error::other(e)))??;
-    if !actual.eq_ignore_ascii_case(sha256) {
-        let _ = tokio::fs::remove_file(part).await;
-        return Err(ToolError::Checksum {
-            file: dest.display().to_string(),
-        });
-    }
-    tokio::fs::rename(part, dest).await?;
-    Ok(())
+    let (part, dest) = (part.to_owned(), dest.to_owned());
+    let sha256 = sha256.to_owned();
+    tokio::task::spawn_blocking(move || {
+        let actual = sha256_file(&part)?;
+        if !actual.eq_ignore_ascii_case(&sha256) {
+            let _ = std::fs::remove_file(&part);
+            return Err(ToolError::Checksum {
+                file: dest.display().to_string(),
+            });
+        }
+        retry_io(|| std::fs::rename(&part, &dest))?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| ToolError::Io(std::io::Error::other(e)))?
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    const ABC_SHA: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
     #[test]
-    fn part_path_appends_suffix() {
+    fn part_path_is_keyed_by_hash() {
         assert_eq!(
-            part_path(Path::new(r"C:\bin\deno.zip")),
-            PathBuf::from(r"C:\bin\deno.zip.part")
+            part_path(Path::new(r"C:\bin\deno.zip"), ABC_SHA),
+            PathBuf::from(r"C:\bin\deno.zip.ba7816bf.part")
         );
+    }
+
+    #[tokio::test]
+    async fn stale_parts_of_other_versions_are_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("ffmpeg.7z");
+        let stale = part_path(&dest, &"1".repeat(64));
+        let current = part_path(&dest, ABC_SHA);
+        let unrelated = dir.path().join("deno.zip.11111111.part");
+        for f in [&stale, &current, &unrelated] {
+            std::fs::write(f, b"x").unwrap();
+        }
+        remove_stale_parts(&dest, ABC_SHA).await;
+        assert!(!stale.exists() && current.exists() && unrelated.exists());
+    }
+
+    #[tokio::test]
+    async fn permanent_errors_are_not_retried() {
+        let calls = std::sync::atomic::AtomicU32::new(0);
+        let result: Result<(), _> = with_retry(|| async {
+            calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Err(ToolError::Http(404))
+        })
+        .await;
+        assert!(result.is_err());
+        assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 1);
     }
 
     #[tokio::test]
     async fn finish_rejects_wrong_hash_and_removes_partial() {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("x.bin");
-        let part = part_path(&dest);
+        let wrong = "0".repeat(64);
+        let part = part_path(&dest, &wrong);
         std::fs::write(&part, b"abc").unwrap();
-        let err = finish(&part, &dest, &"0".repeat(64)).await.unwrap_err();
+        let err = finish(&part, &dest, &wrong).await.unwrap_err();
         assert!(matches!(err, ToolError::Checksum { .. }));
         assert!(!part.exists() && !dest.exists());
     }
 
-    /// Real download (~35 MB). Proves a `.part` file is resumed with a Range request.
+    #[tokio::test]
+    async fn finish_moves_verified_file_into_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("x.bin");
+        let part = part_path(&dest, ABC_SHA);
+        std::fs::write(&part, b"abc").unwrap();
+        finish(&part, &dest, ABC_SHA).await.unwrap();
+        assert!(dest.exists() && !part.exists());
+    }
+
+    /// Real download (~35 MB). Proves a partial file is resumed with a Range request.
     #[tokio::test]
     #[ignore]
     async fn resumes_a_partial_download() {
@@ -149,7 +232,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(head.len() as u64, HEAD);
-        std::fs::write(part_path(&dest), &head).unwrap();
+        std::fs::write(part_path(&dest, FFMPEG.sha256), &head).unwrap();
 
         let first_report = AtomicU64::new(u64::MAX);
         download_verified(&client, FFMPEG.url, &dest, FFMPEG.sha256, &|received, _| {
@@ -159,21 +242,5 @@ mod tests {
         .unwrap();
         assert!(first_report.load(Ordering::Relaxed) > HEAD, "download restarted from zero");
         assert!(dest.exists());
-    }
-
-    #[tokio::test]
-    async fn finish_moves_verified_file_into_place() {
-        let dir = tempfile::tempdir().unwrap();
-        let dest = dir.path().join("x.bin");
-        let part = part_path(&dest);
-        std::fs::write(&part, b"abc").unwrap();
-        finish(
-            &part,
-            &dest,
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
-        )
-        .await
-        .unwrap();
-        assert!(dest.exists() && !part.exists());
     }
 }

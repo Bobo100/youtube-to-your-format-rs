@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -19,9 +20,15 @@ impl ToolState {
             .unwrap_or_default()
     }
 
+    /// Write-then-rename, so a power cut never leaves a truncated file behind.
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
         let json = serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?;
-        std::fs::write(path, json)
+        let tmp = path.with_extension("json.tmp");
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(&json)?;
+        file.sync_all()?;
+        drop(file);
+        super::install::retry_io(|| std::fs::rename(&tmp, path))
     }
 }
 

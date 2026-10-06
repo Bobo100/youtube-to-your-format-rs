@@ -24,10 +24,22 @@ export default function App() {
   };
 
   useEffect(() => {
-    const unlisten = onToolsProgress(setProgress);
-    prepare();
+    // Start only after the listener is registered so no early progress is missed.
+    // In StrictMode the first effect is cleaned up before listen() resolves, so
+    // prepare() runs once.
+    let cancelled = false;
+    let stop: (() => void) | undefined;
+    onToolsProgress(setProgress).then((unlisten) => {
+      if (cancelled) {
+        unlisten();
+        return;
+      }
+      stop = unlisten;
+      prepare();
+    });
     return () => {
-      unlisten.then((stop) => stop());
+      cancelled = true;
+      stop?.();
     };
   }, [prepare]);
 

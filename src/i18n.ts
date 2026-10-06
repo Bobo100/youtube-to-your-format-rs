@@ -9,6 +9,8 @@ const zh = {
   "error.network": "連不上網路，請檢查網路後再試一次",
   "error.tool_blocked": "下載工具被防毒軟體擋住了",
   "error.tools_missing": "準備失敗了",
+  "error.github_busy": "下載來源暫時太忙，請過一小時再試",
+  "error.disk_full": "電腦空間不夠了，請清出一些空間再試",
 } as const;
 
 export type MessageKey = keyof typeof zh;

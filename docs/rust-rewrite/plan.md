@@ -34,7 +34,30 @@ Deviation: 驗證視窗原本用 `npm run tauri dev` → 改用 `npm run rs:buil
 - [x] 第一次準備畫面 + `tools-progress`
 - [x] Verify: 單元測試(SHA2-256SUMS 解析、驗證；版本比較移到 W05);手動：刪掉 `bin\` 後重開會重新準備，中途斷網可續傳;全程無 console 視窗
 
-Evidence: PR #3。`npm run rs:test` 20 passed(process 3 項:隱藏子行程輸出、Missing 分類、kill_tree;checksum、`.part` 驗證失敗刪檔、換檔保留 `.old`、zip 解壓、state 損毀 fallback、`needed()` 判斷);`-- --ignored` 2 passed:真的裝三個工具到 temp dir 並各自跑 `--version`(16.5s),以及先放 3 MB `.part` 再下載、第一筆進度 > 3 MB(證明 Range 續傳);`npm test` 5 passed。手動:刪掉 `bin\` 後啟動 debug exe 顯示準備畫面(截圖),完成後顯示「準備好了」、`state.json` 記錄 2026.08.19 / 9.0.2 / 2.9.7;準備過程中列出所有有視窗的 process,沒有 yt-dlp / ffmpeg / deno / conhost。
+Evidence: PR #3。`npm run rs:test` 27 passed,涵蓋:
+- process:隱藏子行程的輸出、Missing 分類、防毒錯誤碼 5 / 225 / 226 判成 Blocked、kill_tree、卡住的子行程逾時後整組結束
+- 工具安裝:SHA2-256SUMS 解析、hash 錯就刪掉 `.part`、`.part` 以 hash 命名並清掉舊版本的、4xx 不重試、換檔保留 `.old` 與 rollback、zip 解壓與同名去重、`state.json` 原子寫入與損毀 fallback、`needed()` 判斷、錯誤代碼對應
+
+其他驗證:
+- `-- --ignored` 2 passed:真的把三個工具裝到 temp dir,並各自跑 `--version`(17.1s);先放 3 MB `.part` 再下載，第一筆進度 > 3 MB,證明 Range 續傳
+- `npm test` 5 passed
+- 手動：刪掉 `bin\` 後啟動 debug exe,顯示準備畫面(截圖),完成後顯示「準備好了」;`bin\` 只剩三個工具和 `state.json`,沒有殘留的暫存檔
+- 準備過程中列出所有有視窗的 process,沒有 yt-dlp / ffmpeg / deno / conhost
+- 第二次啟動時，第二個 process 會自己結束(single-instance)
+
+對抗性 review 修正：
+- 加 single-instance
+- 驗證工具時加 60s timeout
+- 子行程先 suspended,放進 Job Object 後才 resume
+- `SetErrorMode`,缺 DLL 時直接失敗，不跳出看不到的對話框
+- 新增錯誤代碼 github_busy / disk_full / 防毒錯誤碼
+- 改名遇到防毒鎖檔會重試
+- 驗證失敗就 rollback
+- `.part` 以 hash 命名
+- 檢查 `Content-Range` 的起點
+- 前端先註冊 listener 再開始準備
+
+L7(整體下載時限)沒修，寫進 vault backlog。
 Deviation:
 - ffmpeg 來源:原本把 BtbN build 重新上傳到自己 repo 的 release → 改成直接下載 GyanD/codexffmpeg 9.0.2 essentials 7z → BtbN gpl 版 zip 要 184 MB;GyanD 只有 34 MB,而且從 2020 年起每個有版本號的 release 都還在 → hash 對過 gyan.dev 公布的 `.sha256`。
 - 版本比較:原本放在 W02 → 移到 W05 → 只有 yt-dlp 更新會用到。
