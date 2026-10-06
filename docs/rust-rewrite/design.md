@@ -112,7 +112,7 @@ Tauri app 是 GUI 程式。用 `std::process::Command` 直接開 yt-dlp / ffmpeg
 
 | 工具 | 為什麼需要 | 來源 | 更新方式 |
 |---|---|---|---|
-| **yt-dlp** | 下載 | GitHub `yt-dlp/yt-dlp` `releases/latest`;stable 失敗時退到 `yt-dlp/yt-dlp-nightly-builds` | 自動 |
+| **yt-dlp** | 下載 | GitHub `yt-dlp/yt-dlp` `releases/latest` 的 **onedir 版 `yt-dlp_win.zip`**(exe + `_internal/`,裝在 `bin\yt-dlp\`);stable 失敗時退到 `yt-dlp/yt-dlp-nightly-builds`。不用 onefile 的 `yt-dlp.exe`:它每次執行都解壓到 `%TEMP%\_MEI*`,被取消或逾時殺掉時這 24 MB 不會被清掉 | 自動 |
 | **ffmpeg + ffprobe** | 合併影音、轉 mp3、轉檔、檢查影片編碼。`-x` 也需要 ffprobe | GyanD/codexffmpeg 的 essentials 7z(含 libx264,約 34 MB)。它從 2020 年起的每個有版本號的 release 都還在；BtbN 只保留最近 14 個 daily build,且 gpl 版 zip 要 184 MB | 固定版本：URL 與 SHA-256 寫死在程式裡，升級 = 改常數、發新版 app |
 | **Deno** | yt-dlp 下載 YouTube 時需要外部 JS runtime 解 JS challenge,官方 yt-dlp.exe **不含** runtime。選 Deno 是因為 yt-dlp 預設啟用它,支援最完整 | `denoland/deno` 的 GitHub Release(會永久保留),固定版本 | 固定版本:URL 與 SHA-256 寫死。yt-dlp 抬高最低版本時要發新版 app |
 
@@ -121,9 +121,9 @@ yt-dlp 一律帶 `--js-runtimes deno:<bin 路徑>\deno.exe`,不依賴系統 PATH
 ### yt-dlp 更新流程
 
 1. 第一次開啟時下載。之後每次啟動,在背景檢查 `releases/latest`,最多一天一次
-2. 下載 `yt-dlp.exe` 與同一個 release 的 `SHA2-256SUMS`,比對通過才換
+2. 下載 `yt-dlp_win.zip` 與同一個 release 的 `SHA2-256SUMS`,比對通過才解壓到 `bin\yt-dlp.new\`
 3. 換檔前先取得 queue 的鎖,確保沒有 yt-dlp 正在執行。原因:Windows 不能覆蓋執行中的 exe
-4. 換檔順序:`yt-dlp.exe.new` 寫入並 `sync_all` → 現有檔 rename 成 `yt-dlp.exe.old` → `.new` rename 成正式檔名。中途斷電也不會留下壞檔
+4. 換資料夾順序:`yt-dlp.new\` 解壓完成 → 現有的 rename 成 `yt-dlp.old\` → `.new` rename 成 `yt-dlp\`。中途斷電也不會留下壞的版本
 5. 保留 `.old`。如果新版本身有 regression(例如換版後連第一個下載都失敗、舊版卻成功),就 rollback
 6. `extractor` 錯誤的自動流程(見「錯誤處理」)會**強制**檢查,不受一天一次的限制
 

@@ -1,9 +1,14 @@
 //! The only interface the frontend can call (contract: docs/rust-rewrite/design.md).
 
+use std::sync::Arc;
+
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
 
+use ytf_core::folders;
+use ytf_core::queue::{Job, JobId, Queue, Request, SaveFormat};
 use ytf_core::reqwest;
+use ytf_core::runner::YtDlpRunner;
 use ytf_core::tools::{self, ToolPaths};
 use ytf_core::ytdlp::{self, Input, Lookup};
 
@@ -48,4 +53,70 @@ pub async fn lookup(input: String, whole_playlist: bool) -> Result<Lookup, Strin
             eprintln!("lookup failed: {err}");
             err.code(searching).to_owned()
         })
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveItem {
+    id: String,
+    url: String,
+    title: String,
+}
+
+/// `skip_done`: batch saves ("全部存成音樂") leave out items already saved.
+#[tauri::command]
+pub fn enqueue(queue: State<'_, Queue>, items: Vec<SaveItem>, format: SaveFormat, skip_done: bool) -> Vec<JobId> {
+    queue.enqueue(
+        items
+            .into_iter()
+            .map(|item| Request { video_id: item.id, url: item.url, title: item.title, format })
+            .collect(),
+        skip_done,
+    )
+}
+
+#[tauri::command]
+pub fn cancel_job(queue: State<'_, Queue>, id: JobId) {
+    queue.cancel(id);
+}
+
+/// Lets the window rebuild its state after a reload.
+#[tauri::command]
+pub fn list_jobs(queue: State<'_, Queue>) -> Vec<Job> {
+    queue.jobs()
+}
+
+/// Only reveals files this app produced, so the frontend cannot open arbitrary
+/// paths. If the file was moved or deleted, opens the folder it was saved in.
+#[tauri::command]
+pub fn open_folder(queue: State<'_, Queue>, id: JobId) -> Result<(), String> {
+    let path = queue
+        .jobs()
+        .into_iter()
+        .find(|job| job.id == id)
+        .and_then(|job| job.output_path)
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| "not_found".to_owned())?;
+    let result = if path.exists() {
+        tauri_plugin_opener::reveal_item_in_dir(&path)
+    } else {
+        let dir = path.parent().map(std::path::Path::to_path_buf).unwrap_or_else(folders::default_output_dir);
+        std::fs::create_dir_all(&dir).ok();
+        tauri_plugin_opener::open_path(dir, None::<&str>)
+    };
+    result.map_err(|err| {
+        eprintln!("opening the folder failed: {err}");
+        "open_failed".to_owned()
+    })
+}
+
+pub fn start_queue(app: &AppHandle) -> Queue {
+    let paths = ToolPaths::from_env().expect("LOCALAPPDATA is set on Windows");
+    let runner = YtDlpRunner { paths, output_dir: Box::new(folders::default_output_dir) };
+    let emitter = app.clone();
+    let (queue, worker) = Queue::new(Arc::new(runner), move |job: &Job| {
+        let _ = emitter.emit("job-updated", job);
+    });
+    tauri::async_runtime::spawn(worker);
+    queue
 }

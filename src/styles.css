@@ -259,3 +259,18 @@ body {
   padding: 0 16px;
   font-size: 1rem;
 }
+
+.job {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.status.ok {
+  color: #14532d;
+}
+
+.item.compact .info {
+  padding: 2px 4px;
+}

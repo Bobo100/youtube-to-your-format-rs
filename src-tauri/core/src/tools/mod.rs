@@ -17,7 +17,8 @@ use serde::Serialize;
 
 use crate::process::{self, SpawnError};
 use download::with_retry;
-use install::{extract_7z, extract_zip, new_path, replace_with_new, rollback};
+use install::{extract_7z, extract_zip, extract_zip_tree, new_path, replace_with_new, rollback};
+pub(crate) use install::retry_io;
 use manifest::{Pinned, DENO, FFMPEG};
 use state::ToolState;
 
@@ -98,6 +99,7 @@ pub struct ToolsProgress {
     pub total: Option<u64>,
 }
 
+#[derive(Debug, Clone)]
 pub struct ToolPaths {
     pub bin: PathBuf,
 }
@@ -111,8 +113,13 @@ impl ToolPaths {
         })
     }
 
+    /// The onedir build lives in its own folder: no per-run unpacking into
+    /// %TEMP% (a killed onefile exe leaks a 24 MB `_MEI*` folder every time).
+    pub fn ytdlp_dir(&self) -> PathBuf {
+        self.bin.join("yt-dlp")
+    }
     pub fn ytdlp(&self) -> PathBuf {
-        self.bin.join("yt-dlp.exe")
+        self.ytdlp_dir().join("yt-dlp.exe")
     }
     pub fn ffmpeg(&self) -> PathBuf {
         self.bin.join("ffmpeg.exe")
@@ -174,18 +181,24 @@ pub async fn prepare(
         match tool {
             Tool::Ytdlp => {
                 let version = install_ytdlp(paths, client, &report).await?;
-                verify_or_rollback(&[(paths.ytdlp(), "--version")]).await?;
+                verify_or_rollback(&[(paths.ytdlp(), "--version", paths.ytdlp_dir())]).await?;
+                // Earlier builds installed the onefile exe directly in bin/.
+                let _ = tokio::fs::remove_file(paths.bin.join("yt-dlp.exe")).await;
                 state.ytdlp = Some(version);
             }
             Tool::Ffmpeg => {
                 install_pinned(paths, client, &FFMPEG, "ffmpeg.7z", &["ffmpeg.exe", "ffprobe.exe"], &report)
                     .await?;
-                verify_or_rollback(&[(paths.ffmpeg(), "-version"), (paths.ffprobe(), "-version")]).await?;
+                verify_or_rollback(&[
+                    (paths.ffmpeg(), "-version", paths.ffmpeg()),
+                    (paths.ffprobe(), "-version", paths.ffprobe()),
+                ])
+                .await?;
                 state.ffmpeg = Some(FFMPEG.version.to_owned());
             }
             Tool::Deno => {
                 install_pinned(paths, client, &DENO, "deno.zip", &["deno.exe"], &report).await?;
-                verify_or_rollback(&[(paths.deno(), "--version")]).await?;
+                verify_or_rollback(&[(paths.deno(), "--version", paths.deno())]).await?;
                 state.deno = Some(DENO.version.to_owned());
             }
         }
@@ -225,12 +238,20 @@ async fn install_ytdlp(paths: &ToolPaths, client: &Client, report: &Report<'_>) 
     })
     .await?;
     let sha256 = with_retry(|| release::expected_sha256(client, &release, manifest::YTDLP_ASSET)).await?;
-    let target = paths.ytdlp();
+    let archive = paths.bin.join(manifest::YTDLP_ASSET);
     let last = AtomicU64::new(0);
-    download::download_verified(client, &release.exe_url, &new_path(&target), &sha256, &throttled(report, &last))
-        .await?;
+    download::download_verified(client, &release.exe_url, &archive, &sha256, &throttled(report, &last)).await?;
     report("extract", 0, None);
-    replace_all(vec![target]).await?;
+    let dir = paths.ytdlp_dir();
+    let archive_for_task = archive.clone();
+    let files = tokio::task::spawn_blocking(move || extract_zip_tree(&archive_for_task, &dir))
+        .await
+        .map_err(|e| ToolError::Internal(e.to_string()))??;
+    if !new_path(&paths.ytdlp_dir()).join("yt-dlp.exe").is_file() {
+        return Err(ToolError::Archive(format!("{}: no yt-dlp.exe among {files} files", manifest::YTDLP_ASSET)));
+    }
+    replace_all(vec![paths.ytdlp_dir()]).await?;
+    let _ = tokio::fs::remove_file(&archive).await;
     Ok(release.version)
 }
 
@@ -266,12 +287,12 @@ async fn install_pinned(
     Ok(())
 }
 
-/// Runs each freshly installed exe; if any fails, every one goes back to its
-/// previous version so a bad update never replaces a working tool.
-async fn verify_or_rollback(checks: &[(PathBuf, &str)]) -> Result<(), ToolError> {
-    for (exe, arg) in checks {
+/// Runs each freshly installed exe; if any fails, every installed target (a
+/// file, or yt-dlp's folder) goes back to its previous version.
+async fn verify_or_rollback(checks: &[(PathBuf, &str, PathBuf)]) -> Result<(), ToolError> {
+    for (exe, arg, _) in checks {
         if let Err(err) = verify_runs(exe, arg).await {
-            let targets: Vec<PathBuf> = checks.iter().map(|(exe, _)| exe.clone()).collect();
+            let targets: Vec<PathBuf> = checks.iter().map(|(_, _, target)| target.clone()).collect();
             let _ = tokio::task::spawn_blocking(move || targets.iter().try_for_each(|t| rollback(t))).await;
             return Err(err);
         }
@@ -296,6 +317,7 @@ mod tests {
     use super::*;
 
     fn touch(path: &Path) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, b"x").unwrap();
     }
 

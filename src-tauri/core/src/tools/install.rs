@@ -38,33 +38,74 @@ pub fn retry_io<T>(mut op: impl FnMut() -> io::Result<T>) -> io::Result<T> {
     op()
 }
 
-/// Puts `target.new` in place of `target`, keeping the previous file as
-/// `target.old` for rollback. Windows cannot overwrite a running exe, so the
-/// caller must make sure nothing is executing `target`.
+fn remove_any(path: &Path) -> io::Result<()> {
+    if path.is_dir() {
+        retry_io(|| fs::remove_dir_all(path))
+    } else {
+        retry_io(|| fs::remove_file(path))
+    }
+}
+
+/// Puts `target.new` (a file or a folder) in place of `target`, keeping the
+/// previous one as `target.old` for rollback. Windows cannot replace a running
+/// exe, so the caller must make sure nothing is executing from `target`.
 pub fn replace_with_new(target: &Path) -> io::Result<()> {
     let new = new_path(target);
-    OpenOptions::new().write(true).open(&new)?.sync_all()?;
+    if new.is_file() {
+        OpenOptions::new().write(true).open(&new)?.sync_all()?;
+    }
     if target.exists() {
         let old = old_path(target);
         if old.exists() {
-            retry_io(|| fs::remove_file(&old))?;
+            remove_any(&old)?;
         }
         retry_io(|| fs::rename(target, &old))?;
     }
     retry_io(|| fs::rename(&new, target))
 }
 
-/// Undoes `replace_with_new` after the new file failed verification: the
+/// Undoes `replace_with_new` after the new version failed verification: the
 /// previous version comes back, or a broken first install is removed.
 pub fn rollback(target: &Path) -> io::Result<()> {
     let old = old_path(target);
     if target.exists() {
-        retry_io(|| fs::remove_file(target))?;
+        remove_any(target)?;
     }
     if old.exists() {
         retry_io(|| fs::rename(&old, target))?;
     }
     Ok(())
+}
+
+/// Unpacks the whole archive into `<dir>.new/` (yt-dlp's onedir build: an exe
+/// plus `_internal/`). Entries escaping the folder are refused.
+pub fn extract_zip_tree(archive: &Path, dir: &Path) -> io::Result<usize> {
+    let staging = new_path(dir);
+    if staging.exists() {
+        remove_any(&staging)?;
+    }
+    fs::create_dir_all(&staging)?;
+    let mut zip = zip::ZipArchive::new(File::open(archive)?).map_err(io::Error::other)?;
+    let mut files = 0;
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i).map_err(io::Error::other)?;
+        let Some(relative) = entry.enclosed_name() else {
+            return Err(io::Error::other(format!("unsafe archive entry {}", entry.name())));
+        };
+        let out = staging.join(relative);
+        if entry.is_dir() {
+            fs::create_dir_all(&out)?;
+            continue;
+        }
+        if let Some(parent) = out.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut file = File::create(&out)?;
+        io::copy(&mut entry, &mut file)?;
+        file.sync_all()?;
+        files += 1;
+    }
+    Ok(files)
 }
 
 /// Writes each `wanted` file name found in the archive (at any depth) to
@@ -210,5 +251,34 @@ mod tests {
         zip_with(&archive, &[("a/deno.exe", b"first"), ("b/deno.exe", b"second")]);
         assert_eq!(extract_zip(&archive, &["deno.exe"], dir.path()).unwrap(), 1);
         assert_eq!(fs::read(new_path(&dir.path().join("deno.exe"))).unwrap(), b"first");
+    }
+
+    #[test]
+    fn onedir_folder_is_staged_replaced_and_rolled_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("yt-dlp");
+        let archive = dir.path().join("yt-dlp_win.zip");
+        zip_with(&archive, &[("yt-dlp.exe", b"v2"), ("_internal/python.dll", b"py")]);
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("yt-dlp.exe"), b"v1").unwrap();
+
+        assert_eq!(extract_zip_tree(&archive, &target).unwrap(), 2);
+        replace_with_new(&target).unwrap();
+        assert_eq!(fs::read(target.join("yt-dlp.exe")).unwrap(), b"v2");
+        assert_eq!(fs::read(target.join("_internal").join("python.dll")).unwrap(), b"py");
+        assert_eq!(fs::read(old_path(&target).join("yt-dlp.exe")).unwrap(), b"v1");
+
+        rollback(&target).unwrap();
+        assert_eq!(fs::read(target.join("yt-dlp.exe")).unwrap(), b"v1");
+        assert!(!target.join("_internal").exists());
+    }
+
+    #[test]
+    fn archive_entries_cannot_escape_the_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("evil.zip");
+        zip_with(&archive, &[("../escape.exe", b"x")]);
+        assert!(extract_zip_tree(&archive, &dir.path().join("yt-dlp")).is_err());
+        assert!(!dir.path().join("escape.exe").exists());
     }
 }

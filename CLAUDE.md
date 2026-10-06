@@ -23,6 +23,8 @@
 - **一個畫面一個主要動作**:字級 18 / 20px、按鈕高 ≥ 52px、文字對比 AAA、圖示都配文字、不用 emoji。新畫面先對照 [mockup](docs/mockups/ui/README.md)
 - **下載的工具一律驗 SHA-256**:ffmpeg / Deno 的 hash 寫死在程式裡;yt-dlp 比對同 release 的 `SHA2-256SUMS`
 - **測試寫在 `ytf-core`,不寫在 Tauri crate**:連結 Tauri 的測試執行檔沒有 app manifest,一跑就 `STATUS_ENTRYPOINT_NOT_FOUND`,所以 Tauri crate 設了 `test = false`
+- **yt-dlp 用 onedir 版(`bin\yt-dlp\`),不要換回 onefile `yt-dlp.exe`**:onefile 每次執行都解壓到 `%TEMP%\_MEI*`,被 Job Object 殺掉時不會清掉,每次取消漏 24 MB
+- **每個下載的檔名開頭(`<base>.`)必須獨一無二**(`naming::unique_base`):取消時會刪掉資料夾裡所有以它開頭的檔案。所以同一首先存音樂再存影片，影片會叫 `歌 (2).mp4`
 - **升級 ffmpeg / Deno = 改 `core/src/tools/manifest.rs` 的常數**:URL、版本、SHA-256(對照發布者自己的 checksum)。yt-dlp 不固定版本
 
 ## 指令
