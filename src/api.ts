@@ -99,3 +99,37 @@ export function onLookupUpdating(handler: () => void): Promise<UnlistenFn> {
 export function convertFiles(paths: string[], format: SaveFormat): Promise<number[]> {
   return invoke("convert_files", { paths, format });
 }
+
+export type AppSettings = {
+  outputDir: string | null;
+  fontSize: "large" | "xlarge";
+  theme: "light" | "dark";
+  language: "zh" | "en";
+  oldFolderHintDismissed: boolean;
+};
+
+export type SettingsView = {
+  settings: AppSettings;
+  /** Where downloads go right now (the default if the chosen folder is gone). */
+  outputDir: string;
+  oldFolder: string | null;
+  appVersion: string;
+  ytdlpVersion: string | null;
+};
+
+export function getSettings(): Promise<SettingsView> {
+  return invoke("get_settings");
+}
+
+/** Rejects with an error code such as "settings_save_failed". */
+export function setSettings(settings: AppSettings): Promise<SettingsView> {
+  return invoke("set_settings", { settings });
+}
+
+export function openOldFolder(): Promise<void> {
+  return invoke("open_old_folder");
+}
+
+export function closeAnyway(): Promise<void> {
+  return invoke("close_anyway");
+}

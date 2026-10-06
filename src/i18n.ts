@@ -23,19 +23,20 @@ const zh = {
   jobQueued: "排隊中，等前面的工作完成…",
   jobDownloading: "正在下載{what}… {percent}%",
   jobDownloadingShort: "正在下載{what}",
-  "error.open_failed": "打不開資料夾",
   jobProcessing: "快好了，正在處理…",
   jobUpdating: "YouTube 好像改版了，正在更新下載工具，請稍等…",
   copyDiagnostics: "複製問題資訊（傳給 Bobo）",
   copied: "已複製，可以貼到 LINE 傳給 Bobo",
   copyFailed: "沒有複製成功，請直接截圖傳給 Bobo",
-  jobDone: "好了！已存到「下載 › YouTube」",
+  jobDone: "好了！已存到「{folder}」",
   jobCanceled: "已取消",
   jobFailed: "沒有下載成功",
   cancel: "取消",
   openFolder: "打開資料夾",
   otherJobs: "其他下載",
+  downloadsFolder: "下載",
   convert: "轉檔",
+  settings: "設定",
   back: "回去",
   dropHere: "把檔案拖進來",
   orPick: "或按這裡選檔案",
@@ -49,12 +50,34 @@ const zh = {
   convertList: "轉檔清單",
   jobConverting: "正在轉成{what}… {percent}%",
   convertDone: "好了！放在原本的檔案旁邊",
-  convertDoneElsewhere: "好了！原本的資料夾不能存，改存到「下載 › YouTube」",
+  convertDoneElsewhere: "好了！原本的資料夾不能存，改存到「{folder}」",
   jobConvertingNoProgress: "正在轉檔…",
   pickFirst: "請先把檔案拖進來，或按上面選檔案",
   waitingConverts: "前面還有 {count} 個轉檔，做完才會開始下載",
   waitingDownloads: "前面還有 {count} 個下載，做完才會開始轉檔",
   allFiles: "所有檔案",
+  settingFolder: "存到哪裡",
+  settingFolderMissing: "選的資料夾找不到了（可能拔掉了隨身碟），先存到「{folder}」",
+  chooseFolder: "換資料夾",
+  useDefaultFolder: "改回預設",
+  settingFontSize: "字的大小",
+  fontLarge: "大",
+  fontXlarge: "特大",
+  settingTheme: "畫面顏色",
+  themeLight: "亮",
+  themeDark: "暗",
+  settingLanguage: "語言",
+  versionLine: "版本 {app} · 下載工具 {ytdlp}（會自動更新）",
+  unknownVersion: "準備中",
+  oldFolderHint: "以前用舊版存的歌，放在「{folder}」",
+  openOldFolder: "打開看看",
+  dismiss: "知道了",
+  closeTitle: "還在下載，確定要關嗎？",
+  closeBody: "關掉的話，還沒下載完的會停掉，下次要重新下載。",
+  keepDownloading: "不要關，繼續下載",
+  closeAnyway: "確定關掉",
+  "error.open_failed": "打不開資料夾",
+  "error.settings_save_failed": "設定沒有存成功，請再試一次",
   "error.lookup_failed": "找不到這部影片，請確認網址是否正確",
   "error.search_failed": "現在搜尋不到，請過一會兒再試",
   "error.unavailable": "這部影片沒辦法下載（可能是直播、私人或會員限定）",
@@ -80,14 +103,140 @@ const zh = {
 
 export type MessageKey = keyof typeof zh;
 
+const en: Record<MessageKey, string> = {
+  appTitle: "YouTube Downloader",
+  preparingTitle: "Getting ready for the first time…",
+  preparingStep: "Step {step} of {steps}",
+  preparingHint: "This takes 1 to 3 minutes. Please keep the window open.",
+  preparingExtract: "Unpacking… (step {step} of {steps})",
+  retry: "Try again",
+  homeLabel: "What do you want to save?",
+  homeHelp: "Type a song name, or paste a YouTube link",
+  find: "Find",
+  finding: "Searching…",
+  noResults: "Nothing found. Try other words.",
+  saveAudio: "Save as music",
+  saveVideo: "Save as video",
+  saveAllAudio: "Save all as music",
+  wholePlaylist: "Get the whole list",
+  playlistCount: "{count} songs",
+  playlistTruncated: "The list is long; showing the first {count}",
+  skippedCount: "{count} are private, members-only or live and were skipped",
+  foundCount: "{count} results",
+  whatAudio: "music",
+  whatVideo: "video",
+  jobQueued: "Waiting for the ones before it…",
+  jobDownloading: "Saving {what}… {percent}%",
+  jobDownloadingShort: "Saving {what}",
+  jobProcessing: "Almost done…",
+  jobUpdating: "YouTube seems to have changed. Updating the download tool, please wait…",
+  copyDiagnostics: "Copy problem details (send to Bobo)",
+  copied: "Copied. Paste it into LINE for Bobo.",
+  copyFailed: "Could not copy. Please send Bobo a screenshot.",
+  jobDone: "Done! Saved in “{folder}”",
+  jobCanceled: "Cancelled",
+  jobFailed: "Could not save",
+  cancel: "Cancel",
+  openFolder: "Open folder",
+  otherJobs: "Other downloads",
+  downloadsFolder: "Downloads",
+  convert: "Convert",
+  settings: "Settings",
+  back: "Back",
+  dropHere: "Drag files here",
+  orPick: "or click to choose files",
+  filesChosen: "{count} files chosen",
+  mediaFiles: "Audio and video",
+  convertTo: "Convert to what?",
+  formatAudio: "Music MP3",
+  formatVideo: "Video MP4",
+  startConvert: "Start converting",
+  convertWhere: "Converted files go next to the original",
+  convertList: "Conversions",
+  jobConverting: "Converting to {what}… {percent}%",
+  convertDone: "Done! Next to the original file",
+  convertDoneElsewhere: "Done! The original folder is read-only, so it went to “{folder}”",
+  jobConvertingNoProgress: "Converting…",
+  pickFirst: "Drag files in, or choose them above, first",
+  waitingConverts: "{count} conversions are ahead; downloads start after them",
+  waitingDownloads: "{count} downloads are ahead; conversions start after them",
+  allFiles: "All files",
+  settingFolder: "Save to",
+  settingFolderMissing: "The chosen folder is missing (USB stick unplugged?). Saving to “{folder}” for now.",
+  chooseFolder: "Change folder",
+  useDefaultFolder: "Use default",
+  settingFontSize: "Text size",
+  fontLarge: "Large",
+  fontXlarge: "Extra large",
+  settingTheme: "Colours",
+  themeLight: "Light",
+  themeDark: "Dark",
+  settingLanguage: "Language",
+  versionLine: "Version {app} · download tool {ytdlp} (updates itself)",
+  unknownVersion: "getting ready",
+  oldFolderHint: "Songs saved with the old version are in “{folder}”",
+  openOldFolder: "Show me",
+  dismiss: "Got it",
+  closeTitle: "Still downloading. Close anyway?",
+  closeBody: "Unfinished downloads will stop and have to start again next time.",
+  keepDownloading: "Keep downloading",
+  closeAnyway: "Close",
+  "error.open_failed": "Could not open the folder",
+  "error.settings_save_failed": "Settings were not saved. Please try again.",
+  "error.lookup_failed": "That video was not found. Please check the link.",
+  "error.search_failed": "Searching does not work right now. Try again in a while.",
+  "error.unavailable": "This video cannot be saved (it may be live, private or members-only)",
+  "error.not_youtube": "That is not a YouTube link",
+  "error.empty_input": "Type something or paste a link first",
+  "error.download_failed": "This one cannot be saved right now. Try again in a day or two.",
+  "error.extractor": "This one cannot be saved right now. Try again in a day or two.",
+  "error.bot_check": "YouTube is blocking us for a while. Try again later.",
+  "error.login_required": "This video needs a login to save",
+  "error.convert_failed": "This file cannot be converted; it may not be audio or video",
+  "error.no_audio": "This file has no sound, so it cannot become music",
+  "error.is_folder": "That is a folder. Choose the files inside it.",
+  "error.convert_start_failed": "Could not start converting. Please try again.",
+  "error.source_missing": "The original file is gone; it may have been moved",
+  "error.local_io": "Saving was blocked. Close the file if it is playing, then try again.",
+  "error.format_unavailable": "There is no version of this video we can save",
+  "error.network": "No internet connection. Check it and try again.",
+  "error.tool_blocked": "Antivirus blocked the download tool",
+  "error.tools_missing": "Getting ready failed",
+  "error.github_busy": "The download source is busy. Try again in an hour.",
+  "error.disk_full": "The computer is out of space. Free some up and try again.",
+};
+
+export type Language = "zh" | "en";
+
+let current: Record<MessageKey, string> = zh;
+
+/** Called by App when the setting changes; App re-renders everything afterwards. */
+export function setLanguage(language: Language) {
+  current = language === "en" ? en : zh;
+}
+
 export function t(key: MessageKey, params: Record<string, string | number> = {}): string {
   return Object.entries(params).reduce<string>(
     (text, [name, value]) => text.replace(`{${name}}`, String(value)),
-    zh[key],
+    current[key],
   );
 }
 
 export function errorMessage(code: string, fallback: MessageKey = "error.tools_missing"): string {
   const key = `error.${code}` as MessageKey;
   return key in zh ? t(key) : t(fallback);
+}
+
+function label(parts: string[]): string {
+  return parts.map((part) => (part.toLowerCase() === "downloads" ? t("downloadsFolder") : part)).join(" › ");
+}
+
+/** `C:\Users\a\Downloads\YouTube` → `下載 › YouTube` (the last two folders). */
+export function dirLabel(dir: string): string {
+  return label(dir.split(/[\\/]/).filter(Boolean).slice(-2));
+}
+
+/** The folder a file is in, labelled like `dirLabel`. */
+export function folderLabel(filePath: string): string {
+  return label(filePath.split(/[\\/]/).filter(Boolean).slice(-3, -1));
 }

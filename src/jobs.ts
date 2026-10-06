@@ -1,5 +1,5 @@
 import type { Job } from "./api";
-import { t } from "./i18n";
+import { folderLabel, t } from "./i18n";
 
 /** Replaces a job by id unless we already hold a newer snapshot of it. */
 export function upsertJob(jobs: Job[], job: Job): Job[] {
@@ -61,8 +61,8 @@ export function jobStatusText(job: Job): string {
     case "updating":
       return t("jobUpdating");
     case "done":
-      if (job.kind !== "convert") return t("jobDone");
-      return savedNextToSource(job) ? t("convertDone") : t("convertDoneElsewhere");
+      if (job.kind !== "convert") return t("jobDone", { folder: folderLabel(job.outputPath ?? "") });
+      return savedNextToSource(job) ? t("convertDone") : t("convertDoneElsewhere", { folder: folderLabel(job.outputPath ?? "") });
     case "canceled":
       return t("jobCanceled");
     case "failed":

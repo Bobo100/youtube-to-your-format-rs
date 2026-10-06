@@ -9,6 +9,7 @@ pub mod naming;
 pub mod process;
 pub mod queue;
 pub mod runner;
+pub mod settings;
 pub mod tools;
 pub mod ytdlp;
 

@@ -42,7 +42,8 @@ describe("jobs", () => {
     const convert = (outputPath: string) => job({ kind: "convert", url: "D:\\歌\\a.wav", outputPath, state: "done" });
     expect(savedNextToSource(convert("D:\\歌\\a.mp3"))).toBe(true);
     expect(savedNextToSource(convert("C:\\Users\\x\\Downloads\\YouTube\\a.mp3"))).toBe(false);
-    expect(jobStatusText(convert("C:\\Users\\x\\Downloads\\YouTube\\a.mp3"))).toContain("下載");
+    expect(jobStatusText(convert("C:\\Users\\x\\Downloads\\YouTube\\a.mp3"))).toContain("「下載 › YouTube」");
+    expect(jobStatusText(job({ state: "done", outputPath: "E:\\音樂\\老歌\\a.mp3" }))).toBe("好了！已存到「音樂 › 老歌」");
   });
 
   it("counts active jobs of a kind", () => {

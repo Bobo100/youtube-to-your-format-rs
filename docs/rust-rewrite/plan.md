@@ -217,9 +217,29 @@ Deviation:轉檔的唯一檔名原本打算沿用下載的「檔名開頭唯一�
 
 ## W07 — 設定與細節
 
-- [ ] 設定 4 項(資料夾、字級 大 / 特大、亮 / 暗、中文 / English),損毀 fallback
-- [ ] 舊資料夾 `下載\youtube-downloads` 提示、下載中關閉視窗先確認
-- [ ] Verify: 設定 fallback 單元測試;手動切特大字級與暗色;對比用 DevTools 檢查達 AAA
+- [x] 設定 4 項(資料夾、字級 大 / 特大、亮 / 暗、中文 / English),損毀 fallback
+- [x] 舊資料夾 `下載\youtube-downloads` 提示、下載中關閉視窗先確認
+- [ ] Verify: 設定 fallback 單元測試;手動切特大字級與暗色;對比用 DevTools 檢查達 AAA(gap:對比是用色碼計算，沒有開 DevTools 實測，見 Evidence)
+
+Evidence: PR #8。`npm run rs:test` 93 passed,新增：
+- settings:沒有檔案時用預設值(特大、亮、中文);損毀的檔案另存成 `settings.broken.json` 再用預設值；缺欄位時其他欄位補預設值；選的資料夾不見了改用預設資料夾
+- queue:`cancel_all`
+
+`npm test` 14 passed(新增 i18n:中英切換、資料夾標籤)。手動用 debug exe:
+- 設定畫面截圖
+- `settings.json` 改成暗色 + English + 大字，重開後整個畫面都套用(截圖)
+- 下載長片時關閉視窗，跳出「還在下載，確定要關嗎？」,焦點在「繼續下載」(截圖)
+- 按「確定關掉」:先取消再清理,app 結束後「下載 › YouTube」裡沒有殘檔
+
+測試用的 `settings.json` 和下載檔都已刪除。
+
+缺口：
+- 舊資料夾提示沒有實測(這台電腦沒有 `youtube-downloads` 資料夾)
+- 暗色的對比是用色碼算出來的,`#f1f5f9` 對 `#0b1220` 約 17:1,`#06223f` 對 `#93c5fd` 約 10:1,沒有用 DevTools 實測
+
+Deviation:
+- 完成文字原本固定寫「下載 › YouTube」→ 改成依實際輸出路徑顯示資料夾 → 可以自選資料夾後，固定文字會說錯地方 → jobs 測試。
+- 「確定關掉」原本直接關 → 改成先 `cancel_all` 並等清理(最多 10 秒)→ 實測直接被 Job Object 殺掉時，會留下名字看起來完整、其實是截斷的 `.mp3`。
 
 ## W08 — 發布與自動更新
 

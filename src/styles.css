@@ -1,4 +1,9 @@
 :root {
+  --warn-bg: #fef3c7;
+  --warn-line: #b45309;
+  --warn-fg: #7c2d12;
+  --ok-fg: #14532d;
+  --chip-on: #e0edfa;
   --fg: #0b1220;
   --muted: #334155;
   --bg: #f8fafc;
@@ -374,5 +379,138 @@ body {
   .chip.on {
     border-width: 5px;
     border-color: Highlight;
+  }
+}
+
+/* Dark mode is opt-in from 設定; every pair keeps AAA (7:1) contrast. */
+:root[data-theme="dark"] {
+  --fg: #f1f5f9;
+  --muted: #cbd5e1;
+  --bg: #0b1220;
+  --card: #111a2e;
+  --line: #64748b;
+  --accent: #93c5fd;
+  --accent-ink: #06223f;
+  --warn-bg: #3b2a06;
+  --warn-line: #f59e0b;
+  --warn-fg: #fde68a;
+  --ok-fg: #86efac;
+  --chip-on: #1e3a5f;
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+}
+
+.warn {
+  background: var(--warn-bg);
+  border-color: var(--warn-line);
+  color: var(--warn-fg);
+}
+
+.status.ok {
+  color: var(--ok-fg);
+}
+
+.chip.on,
+.drop.over {
+  background: var(--chip-on);
+  color: var(--fg);
+}
+
+.inp {
+  background: var(--card);
+}
+
+.tools {
+  display: inline-flex;
+  gap: 10px;
+}
+
+.notice {
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.notice p {
+  margin: 0;
+  font-weight: bold;
+}
+
+.set {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 2px solid var(--line);
+  font-weight: bold;
+}
+
+.set.column {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.set.column .status {
+  font-weight: normal;
+}
+
+.seg {
+  display: inline-flex;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.seg button {
+  min-height: 48px;
+  min-width: 72px;
+  padding: 0 16px;
+  border: 0;
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.seg button.on {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.seg button:focus-visible {
+  outline: 3px solid var(--fg);
+  outline-offset: -3px;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 55%);
+}
+
+.dialog {
+  max-width: 520px;
+  padding: 22px;
+  border: 3px solid var(--fg);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--fg);
+}
+
+@media (forced-colors: active) {
+  .seg button.on {
+    outline: 4px solid Highlight;
+    outline-offset: -4px;
   }
 }
