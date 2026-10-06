@@ -4,7 +4,7 @@ import { OtherJobs } from "../components/OtherJobs";
 import { VideoCardView } from "../components/VideoCardView";
 import { errorMessage, t } from "../i18n";
 import { ListIcon, MusicIcon, SearchIcon } from "../icons";
-import { latestJobFor, offScreenJobs } from "../jobs";
+import { activeOfKind, latestJobFor, offScreenJobs } from "../jobs";
 
 type Props = {
   jobs: Job[];
@@ -74,6 +74,10 @@ export function Home({ jobs, onSave }: Props) {
         </div>
         <p className="help">{t("homeHelp")}</p>
       </form>
+
+      {activeOfKind(jobs, "convert") > 0 && (
+        <p className="help">{t("waitingConverts", { count: activeOfKind(jobs, "convert") })}</p>
+      )}
 
       <p className="visually-hidden" aria-live="polite">
         {announcement(state)}

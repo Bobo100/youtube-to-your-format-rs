@@ -53,18 +53,14 @@ impl Runner for YtDlpRunner {
 
 impl YtDlpRunner {
     /// Never uses `remove_job_files`: the source shares the output's name prefix,
-    /// so only the single output file may be deleted (run_convert does that).
+    /// so only conversion's own working file may be deleted (run_convert does that).
     async fn convert(&self, job: &Job, cancel: &CancellationToken, update: &(dyn Fn(RunUpdate) + Send + Sync)) -> RunOutcome {
         let source = PathBuf::from(&job.url);
-        let output = convert::output_path(&source, job.format, &(self.output_dir)());
-        if let Some(dir) = output.parent() {
-            let _ = tokio::fs::create_dir_all(dir).await;
-        }
         let report = |p: Option<f64>| match p {
             Some(p) => update(RunUpdate::Progress(p)),
             None => update(RunUpdate::Processing),
         };
-        match convert::run_convert(&self.paths, &source, &output, job.format, cancel, &report).await {
+        match convert::run_convert(&self.paths, &source, job.format, &(self.output_dir)(), cancel, &report).await {
             Ok(path) => RunOutcome::Done(path),
             Err(ConvertError::Canceled) => RunOutcome::Canceled,
             Err(err) => {

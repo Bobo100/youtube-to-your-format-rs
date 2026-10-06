@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Job } from "./api";
-import { jobStateText, jobStatusText, latestJobFor, offScreenJobs, upsertJob } from "./jobs";
+import { activeOfKind, jobStateText, jobStatusText, latestJobFor, offScreenJobs, savedNextToSource, upsertJob } from "./jobs";
 
 const job = (over: Partial<Job>): Job => ({
   id: 1,
@@ -36,6 +36,19 @@ describe("jobs", () => {
   it("lists jobs no card shows, including older jobs of an on-screen card", () => {
     const jobs = [job({ id: 1, format: "video" }), job({ id: 2 }), job({ id: 3, videoId: "gone" })];
     expect(offScreenJobs(jobs, ["abc"]).map((j) => j.id)).toEqual([3, 1]);
+  });
+
+  it("tells whether a conversion went next to its source", () => {
+    const convert = (outputPath: string) => job({ kind: "convert", url: "D:\\歌\\a.wav", outputPath, state: "done" });
+    expect(savedNextToSource(convert("D:\\歌\\a.mp3"))).toBe(true);
+    expect(savedNextToSource(convert("C:\\Users\\x\\Downloads\\YouTube\\a.mp3"))).toBe(false);
+    expect(jobStatusText(convert("C:\\Users\\x\\Downloads\\YouTube\\a.mp3"))).toContain("下載");
+  });
+
+  it("counts active jobs of a kind", () => {
+    const jobs = [job({ kind: "convert", state: "downloading" }), job({ id: 2, kind: "convert", state: "done" })];
+    expect(activeOfKind(jobs, "convert")).toBe(1);
+    expect(activeOfKind(jobs, "download")).toBe(0);
   });
 
   it("finds the newest job for a card", () => {

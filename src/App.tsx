@@ -28,6 +28,13 @@ export default function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [screen, setScreen] = useState<Screen>("home");
 
+  // The pressed header button unmounts on a screen change; give focus to the
+  // new screen's first control instead of dropping it to <body>.
+  useEffect(() => {
+    if (phase !== "ready") return;
+    document.getElementById(screen === "home" ? "what" : "drop-zone")?.focus();
+  }, [screen, phase]);
+
   useEffect(() => {
     let stop: (() => void) | undefined;
     let cancelled = false;

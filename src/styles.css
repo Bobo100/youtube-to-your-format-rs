@@ -369,3 +369,10 @@ body {
 .drop + .lbl {
   margin-top: 18px;
 }
+
+@media (forced-colors: active) {
+  .chip.on {
+    border-width: 5px;
+    border-color: Highlight;
+  }
+}
