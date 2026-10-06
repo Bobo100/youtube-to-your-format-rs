@@ -1,0 +1,40 @@
+{
+  "name": "youtube-to-your-format",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "start": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/with-gnu-toolchain.ps1 npx tauri dev --target x86_64-pc-windows-gnu",
+    "rs:clippy": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/with-gnu-toolchain.ps1 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+    "rs:test": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/with-gnu-toolchain.ps1 cargo test --manifest-path src-tauri/Cargo.toml",
+    "rs:build-debug": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/with-gnu-toolchain.ps1 npx tauri build --debug --no-bundle --target x86_64-pc-windows-gnu"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-opener": "^2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^6.0.2",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.1",
+    "vite": "^8.0.16",
+    "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
