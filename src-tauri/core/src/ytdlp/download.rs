@@ -72,6 +72,15 @@ pub fn find_cookies() -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// yt-dlp writes the cookie jar back to `--cookies FILE` when it exits (and a
+/// kill mid-write truncates it), so each run gets a throwaway copy.
+pub fn prepared_cookies() -> Option<tempfile::TempPath> {
+    let source = find_cookies()?;
+    let copy = tempfile::Builder::new().prefix("ytf-cookies-").suffix(".txt").tempfile().ok()?;
+    std::fs::copy(&source, copy.path()).ok()?;
+    Some(copy.into_temp_path())
+}
+
 pub fn download_args(
     paths: &ToolPaths,
     url: &str,
@@ -134,8 +143,9 @@ pub async fn run_download(
     cancel: &CancellationToken,
     on_update: &(dyn Fn(Update) + Send + Sync),
 ) -> Result<PathBuf, DownloadError> {
+    let cookies = prepared_cookies();
     let mut cmd = process::command(paths.ytdlp());
-    cmd.args(download_args(paths, url, format, dir, base, find_cookies().as_deref()))
+    cmd.args(download_args(paths, url, format, dir, base, cookies.as_deref()))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut spawned = process::spawn(&mut cmd)?;

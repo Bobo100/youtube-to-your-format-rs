@@ -48,6 +48,8 @@ export type JobState = "queued" | "downloading" | "processing" | "done" | "faile
 
 export type Job = {
   id: number;
+  /** Higher is newer; events may arrive out of order. */
+  rev: number;
   videoId: string;
   url: string;
   title: string;
@@ -58,11 +60,17 @@ export type Job = {
   error: string | null;
 };
 
-export function enqueue(items: VideoCard[], format: SaveFormat): Promise<number[]> {
+/** `skipDone`: leave out items already saved (used by "全部存成音樂"). */
+export function enqueue(items: VideoCard[], format: SaveFormat, skipDone = false): Promise<number[]> {
   return invoke("enqueue", {
     items: items.map(({ id, url, title }) => ({ id, url, title })),
     format,
+    skipDone,
   });
+}
+
+export function listJobs(): Promise<Job[]> {
+  return invoke("list_jobs");
 }
 
 export function cancelJob(id: number): Promise<void> {

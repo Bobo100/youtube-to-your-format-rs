@@ -1,7 +1,8 @@
+import { useEffect, useRef, useState } from "react";
 import { cancelJob, openFolder, type Job } from "../api";
 import { errorMessage, t } from "../i18n";
 import { FolderIcon } from "../icons";
-import { isActive, jobStatusText } from "../jobs";
+import { isActive, jobStateText, jobStatusText } from "../jobs";
 
 type Props = {
   job: Job;
@@ -10,13 +11,32 @@ type Props = {
 
 export function JobStatus({ job, onRetry }: Props) {
   const measurable = job.state === "downloading" && job.progress !== null;
+  const primary = useRef<HTMLButtonElement>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
+
+  // The button that was pressed disappears when the state changes (save → cancel →
+  // open folder), which drops keyboard focus to <body>. Hand it to the new button.
+  useEffect(() => {
+    const lost = !document.activeElement || document.activeElement === document.body;
+    if (lost) primary.current?.focus();
+  }, [job.state]);
+
+  const open = () => {
+    setOpenError(null);
+    openFolder(job.id).catch((code: unknown) => setOpenError(String(code)));
+  };
+
   return (
-    <div className="job" aria-live="polite">
+    <div className="job">
+      {/* Announce state changes only; the percentage would be re-read on every update. */}
+      <p className="visually-hidden" aria-live="polite">
+        {jobStateText(job)}
+      </p>
       {isActive(job) && (
         <div
           className={measurable ? "bar" : "bar indeterminate"}
           role="progressbar"
-          aria-label={jobStatusText(job)}
+          aria-label={jobStateText(job)}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={measurable ? Math.round((job.progress ?? 0) * 100) : undefined}
@@ -24,22 +44,25 @@ export function JobStatus({ job, onRetry }: Props) {
           <i style={measurable ? { width: `${(job.progress ?? 0) * 100}%` } : undefined} />
         </div>
       )}
-      <p className={job.state === "done" ? "status ok" : "status"}>{jobStatusText(job)}</p>
+      <p className={job.state === "done" ? "status ok" : "status"} aria-hidden="true">
+        {jobStatusText(job)}
+      </p>
       {job.state === "failed" && <p className="warn">{errorMessage(job.error ?? "", "error.download_failed")}</p>}
+      {openError && <p className="warn">{errorMessage(openError, "error.open_failed")}</p>}
       <div className="acts">
         {isActive(job) && (
-          <button className="btn sec" onClick={() => cancelJob(job.id)}>
+          <button ref={primary} className="btn sec" onClick={() => cancelJob(job.id)}>
             {t("cancel")}
           </button>
         )}
         {job.state === "done" && (
-          <button className="btn" onClick={() => openFolder(job.id)}>
+          <button ref={primary} className="btn" onClick={open}>
             <FolderIcon />
             {t("openFolder")}
           </button>
         )}
         {job.state === "failed" && (
-          <button className="btn" onClick={onRetry}>
+          <button ref={primary} className="btn" onClick={onRetry}>
             {t("retry")}
           </button>
         )}

@@ -76,9 +76,18 @@ impl LookupError {
     }
 }
 
-pub fn lookup_args(paths: &ToolPaths, input: &Input, whole_playlist: bool) -> Vec<OsString> {
+pub fn lookup_args(
+    paths: &ToolPaths,
+    input: &Input,
+    whole_playlist: bool,
+    cookies: Option<&std::path::Path>,
+) -> Vec<OsString> {
     let mut args = base_args(paths);
     args.extend(["-J".into(), "--flat-playlist".into()]);
+    // Age-restricted videos fail at lookup already, before any download could use them.
+    if let Some(cookies) = cookies {
+        args.extend([OsString::from("--cookies"), cookies.as_os_str().to_owned()]);
+    }
     match input {
         Input::Search(query) => {
             // The query is part of the `ytsearchN:` operand, so it can never be read as a flag.
@@ -192,8 +201,9 @@ pub async fn lookup(paths: &ToolPaths, input: &Input, whole_playlist: bool) -> R
     if *input == Input::NotYoutube {
         return Err(LookupError::NotYoutube);
     }
+    let cookies = super::download::prepared_cookies();
     let output = process::run(
-        process::command(paths.ytdlp()).args(lookup_args(paths, input, whole_playlist)),
+        process::command(paths.ytdlp()).args(lookup_args(paths, input, whole_playlist, cookies.as_deref())),
         LOOKUP_TIMEOUT,
     )
     .await?;
@@ -230,7 +240,7 @@ mod tests {
 
     #[test]
     fn every_call_points_yt_dlp_at_deno_and_ffmpeg() {
-        let args = strings(lookup_args(&paths(), &Input::Search("x".into()), false));
+        let args = strings(lookup_args(&paths(), &Input::Search("x".into()), false, None));
         assert!(args.windows(2).any(|w| w == ["--js-runtimes", r"deno:C:\bin\deno.exe"]));
         assert!(args.windows(2).any(|w| w == ["--ffmpeg-location", r"C:\bin"]));
         assert!(args.windows(2).any(|w| w == ["--encoding", "utf-8"]));
@@ -238,16 +248,16 @@ mod tests {
 
     #[test]
     fn search_uses_ytsearch_operand() {
-        let args = strings(lookup_args(&paths(), &Input::Search("-rm 鄧麗君".into()), false));
+        let args = strings(lookup_args(&paths(), &Input::Search("-rm 鄧麗君".into()), false, None));
         assert_eq!(args.last().unwrap(), "ytsearch10:-rm 鄧麗君");
     }
 
     #[test]
     fn mix_link_downloads_one_song_unless_whole_playlist() {
         let input = url_input("https://www.youtube.com/watch?v=abc&list=RDabc");
-        let one = strings(lookup_args(&paths(), &input, false));
+        let one = strings(lookup_args(&paths(), &input, false, None));
         assert!(one.contains(&"--no-playlist".to_owned()));
-        let all = strings(lookup_args(&paths(), &input, true));
+        let all = strings(lookup_args(&paths(), &input, true, None));
         assert!(!all.contains(&"--no-playlist".to_owned()));
         assert!(all.windows(2).any(|w| w == ["-I", "1:201"]));
         assert_eq!(&all[all.len() - 2..], ["--", "https://www.youtube.com/watch?v=abc&list=RDabc"]);

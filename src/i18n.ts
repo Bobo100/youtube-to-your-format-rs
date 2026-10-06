@@ -22,6 +22,8 @@ const zh = {
   whatVideo: "影片",
   jobQueued: "排隊中，等前面的下載完…",
   jobDownloading: "正在下載{what}… {percent}%",
+  jobDownloadingShort: "正在下載{what}",
+  "error.open_failed": "打不開資料夾",
   jobProcessing: "快好了，正在處理…",
   jobDone: "好了！已存到「下載 › YouTube」",
   jobCanceled: "已取消",

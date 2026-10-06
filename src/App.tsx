@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   enqueue,
+  listJobs,
   onJobUpdated,
   onToolsProgress,
   prepareTools,
@@ -27,8 +28,13 @@ export default function App() {
     let stop: (() => void) | undefined;
     let cancelled = false;
     onJobUpdated((job) => setJobs((current) => upsertJob(current, job))).then((unlisten) => {
-      if (cancelled) unlisten();
-      else stop = unlisten;
+      if (cancelled) {
+        unlisten();
+        return;
+      }
+      stop = unlisten;
+      // After a reload the queue may already hold jobs; rev keeps the newest copy.
+      listJobs().then((existing) => setJobs((current) => existing.reduce(upsertJob, current)));
     });
     return () => {
       cancelled = true;
@@ -36,9 +42,10 @@ export default function App() {
     };
   }, []);
 
-  const save = (cards: VideoCard[], format: SaveFormat) => {
-    enqueue(cards, format).catch((err: unknown) => console.error("enqueue failed", err));
-  };
+  const save = (cards: VideoCard[], format: SaveFormat, skipDone = false) =>
+    enqueue(cards, format, skipDone)
+      .then(() => undefined)
+      .catch((err: unknown) => console.error("enqueue failed", err));
 
   const prepare = useCallback(() => {
     prepareTools()

@@ -4,7 +4,9 @@
 
 use std::path::Path;
 
-const MAX_CHARS: usize = 120;
+/// UTF-16 units, the way Windows counts path length: leaves room under the
+/// 260-character MAX_PATH for the folder and `.f299.mp4.part` style suffixes.
+const MAX_UNITS: usize = 100;
 
 /// Turns a video title into a safe Windows file name stem.
 pub fn sanitize(title: &str) -> String {
@@ -17,7 +19,14 @@ pub fn sanitize(title: &str) -> String {
         })
         .collect();
     let collapsed = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
-    let trimmed: String = collapsed.chars().take(MAX_CHARS).collect();
+    let mut units = 0;
+    let trimmed: String = collapsed
+        .chars()
+        .take_while(|c| {
+            units += c.len_utf16();
+            units <= MAX_UNITS
+        })
+        .collect();
     let trimmed = trimmed.trim_end_matches(['.', ' ']).trim_start().to_owned();
     let reserved = {
         let upper = trimmed.split('.').next().unwrap_or_default().to_ascii_uppercase();
@@ -75,7 +84,9 @@ mod tests {
         assert_eq!(sanitize("   "), "youtube");
         assert_eq!(sanitize("con"), "con_");
         assert_eq!(sanitize("COM1.mp3"), "COM1.mp3_");
-        assert_eq!(sanitize(&"字".repeat(300)).chars().count(), MAX_CHARS);
+        assert_eq!(sanitize(&"字".repeat(300)).chars().count(), MAX_UNITS);
+        // Emoji are two UTF-16 units each.
+        assert_eq!(sanitize(&"🎵".repeat(300)).encode_utf16().count(), MAX_UNITS);
     }
 
     #[test]

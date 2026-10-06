@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 use crate::media::{self, MediaError};
 use crate::naming::{sanitize, unique_base};
 use crate::queue::{Job, RunFuture, RunOutcome, RunUpdate, Runner, SaveFormat};
-use crate::tools::ToolPaths;
+use crate::tools::{retry_io, ToolPaths};
 use crate::ytdlp::download::{run_download, DownloadError, Update};
 
 pub struct YtDlpRunner {
@@ -23,6 +23,10 @@ impl Runner for YtDlpRunner {
         update: &'a (dyn Fn(RunUpdate) + Send + Sync),
     ) -> RunFuture<'a> {
         Box::pin(async move {
+            // Canceled while queued: spawning yt-dlp just to kill it would waste a start.
+            if cancel.is_cancelled() {
+                return RunOutcome::Canceled;
+            }
             let dir = (self.output_dir)();
             if let Err(err) = tokio::fs::create_dir_all(&dir).await {
                 eprintln!("cannot create {}: {err}", dir.display());
@@ -59,43 +63,54 @@ impl YtDlpRunner {
                 return RunOutcome::Failed(err.code());
             }
         };
-        if job.format == SaveFormat::Video {
-            update(RunUpdate::Processing);
-            if let Err(err) = self.ensure_h264(&path, cancel).await {
-                return match err {
-                    MediaError::Canceled => RunOutcome::Canceled,
-                    err => {
-                        eprintln!("h264 check of {} failed: {err}", path.display());
-                        RunOutcome::Failed("download_failed")
-                    }
-                };
+        if job.format != SaveFormat::Video {
+            return RunOutcome::Done(path);
+        }
+        update(RunUpdate::Processing);
+        // `--recode-video` only looks at the container (VP9 inside mp4 passes),
+        // so check the codec and convert only when needed.
+        match media::video_codec(&self.paths, &path).await {
+            Ok(codec) if codec == "h264" => RunOutcome::Done(path),
+            Ok(_) => match media::transcode_to_h264(&self.paths, &path, cancel).await {
+                Ok(converted) => RunOutcome::Done(converted),
+                Err(MediaError::Canceled) => RunOutcome::Canceled,
+                Err(err) => {
+                    eprintln!("converting {} failed: {err}", path.display());
+                    RunOutcome::Failed(media_code(&err))
+                }
+            },
+            // The file is already downloaded and usually H.264 anyway: keep it.
+            Err(err) => {
+                eprintln!("ffprobe on {} failed, keeping the file: {err}", path.display());
+                RunOutcome::Done(path)
             }
         }
-        RunOutcome::Done(path)
     }
+}
 
-    /// `--recode-video` only looks at the container (VP9 inside mp4 passes), so
-    /// check the codec and convert only when needed.
-    async fn ensure_h264(&self, path: &Path, cancel: &CancellationToken) -> Result<(), MediaError> {
-        if media::video_codec(&self.paths, path).await? == "h264" {
-            return Ok(());
-        }
-        media::transcode_to_h264(&self.paths, path, cancel).await
+fn media_code(err: &MediaError) -> &'static str {
+    match err {
+        MediaError::Io(e) => DownloadError::Io(std::io::Error::new(e.kind(), e.to_string())).code(),
+        _ => "download_failed",
     }
 }
 
 /// Deletes every file of an unfinished job (`.part`, `.ytdl`, per-stream files).
-/// Safe because `unique_base` picked a prefix no existing file had.
+/// Safe because `unique_base` picked a prefix no existing file had. Retries
+/// because a just-killed child may still be releasing its handles.
 pub async fn remove_job_files(dir: &Path, base: &str) {
-    let prefix = format!("{}.", base.to_lowercase());
-    let Ok(mut entries) = tokio::fs::read_dir(dir).await else {
-        return;
-    };
-    while let Ok(Some(entry)) = entries.next_entry().await {
-        if entry.file_name().to_string_lossy().to_lowercase().starts_with(&prefix) {
-            let _ = tokio::fs::remove_file(entry.path()).await;
+    let (dir, prefix) = (dir.to_owned(), format!("{}.", base.to_lowercase()));
+    let _ = tokio::task::spawn_blocking(move || {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            return;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            if entry.file_name().to_string_lossy().to_lowercase().starts_with(&prefix) {
+                let _ = retry_io(|| std::fs::remove_file(entry.path()));
+            }
         }
-    }
+    })
+    .await;
 }
 
 #[cfg(test)]
@@ -153,7 +168,7 @@ mod tests {
             title: "Me at the zoo: 100% 原版".into(),
             format,
         };
-        queue.enqueue(vec![request(SaveFormat::Audio), request(SaveFormat::Video)]);
+        queue.enqueue(vec![request(SaveFormat::Audio), request(SaveFormat::Video)], false);
         settle(&queue, Duration::from_secs(300)).await;
 
         let jobs = queue.jobs();
@@ -183,7 +198,7 @@ mod tests {
             url: "https://www.youtube.com/watch?v=aqz-KE-bpKQ".into(),
             title: "big buck bunny".into(),
             format: SaveFormat::Video,
-        }]);
+        }], false);
         let start = std::time::Instant::now();
         while !events.lock().unwrap().iter().any(|j| j.progress.is_some_and(|p| p > 0.01)) {
             assert!(start.elapsed() < Duration::from_secs(60), "download never started: {:?}", queue.jobs());

@@ -37,6 +37,9 @@ impl JobState {
 #[serde(rename_all = "camelCase")]
 pub struct Job {
     pub id: JobId,
+    /// Bumped on every change. Events can arrive out of order (cancel runs on a
+    /// command thread, the worker on another), so the UI keeps the highest rev.
+    pub rev: u64,
     pub video_id: String,
     pub url: String,
     pub title: String,
@@ -112,13 +115,27 @@ impl Queue {
         (Self { inner }, worker)
     }
 
-    pub fn enqueue(&self, requests: Vec<Request>) -> Vec<JobId> {
+    /// An item already queued or running in the same format is not added again
+    /// (its id is returned instead); with `skip_done`, neither is one already saved.
+    pub fn enqueue(&self, requests: Vec<Request>, skip_done: bool) -> Vec<JobId> {
         requests
             .into_iter()
             .map(|request| {
+                // One lock for check + insert, so two clicks racing on command
+                // threads cannot both add the same item.
+                let mut jobs = self.inner.jobs.lock().unwrap();
+                let existing = jobs.iter().rev().find_map(|job| {
+                    let same = job.video_id == request.video_id && job.format == request.format;
+                    let keep = job.state.is_active() || (skip_done && job.state == JobState::Done);
+                    (same && keep).then_some(job.id)
+                });
+                if let Some(id) = existing {
+                    return id;
+                }
                 let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
                 let job = Job {
                     id,
+                    rev: 0,
                     video_id: request.video_id,
                     url: request.url,
                     title: request.title,
@@ -129,8 +146,9 @@ impl Queue {
                     error: None,
                 };
                 self.inner.cancels.lock().unwrap().insert(id, CancellationToken::new());
-                self.inner.jobs.lock().unwrap().push(job.clone());
                 (self.inner.emit)(&job);
+                jobs.push(job);
+                drop(jobs);
                 let _ = self.inner.tx.send(id);
                 id
             })
@@ -142,14 +160,14 @@ impl Queue {
         if let Some(token) = self.inner.cancels.lock().unwrap().get(&id) {
             token.cancel();
         }
-        let queued = self.inner.update(id, |job| {
-            if job.state == JobState::Queued {
+        // Only a queued job changes here; a running one reports Canceled itself.
+        self.inner.update_and_emit_if(id, |job| {
+            let queued = job.state == JobState::Queued;
+            if queued {
                 job.state = JobState::Canceled;
             }
+            queued
         });
-        if let Some(job) = queued {
-            (self.inner.emit)(&job);
-        }
     }
 
     pub fn jobs(&self) -> Vec<Job> {
@@ -162,34 +180,41 @@ impl Queue {
 }
 
 impl Inner {
-    fn update(&self, id: JobId, change: impl FnOnce(&mut Job)) -> Option<Job> {
+    /// Applies `change`; when it reports a change, bumps `rev` and emits while
+    /// still holding the lock so snapshots leave in the order they were made.
+    fn update_and_emit_if(&self, id: JobId, change: impl FnOnce(&mut Job) -> bool) -> Option<Job> {
         let mut jobs = self.jobs.lock().unwrap();
         let job = jobs.iter_mut().find(|j| j.id == id)?;
-        change(job);
+        if change(job) {
+            job.rev += 1;
+            (self.emit)(job);
+        }
         Some(job.clone())
     }
 
-    fn update_and_emit(&self, id: JobId, change: impl FnOnce(&mut Job)) {
-        if let Some(job) = self.update(id, change) {
-            (self.emit)(&job);
-        }
+    fn update_and_emit(&self, id: JobId, change: impl FnOnce(&mut Job)) -> Option<Job> {
+        self.update_and_emit_if(id, |job| {
+            change(job);
+            true
+        })
     }
 }
 
 async fn work(inner: Arc<Inner>, runner: Arc<dyn Runner>, mut rx: mpsc::UnboundedReceiver<JobId>) {
     while let Some(id) = rx.recv().await {
-        let Some(job) = inner.update(id, |job| {
-            if job.state == JobState::Queued {
+        let Some(job) = inner.update_and_emit_if(id, |job| {
+            let queued = job.state == JobState::Queued;
+            if queued {
                 job.state = JobState::Downloading;
                 job.progress = Some(0.0);
             }
+            queued
         }) else {
             continue;
         };
         if job.state != JobState::Downloading {
             continue; // canceled while queued
         }
-        (inner.emit)(&job);
         let token = inner.cancels.lock().unwrap().get(&id).cloned().unwrap_or_default();
         let update_inner = Arc::clone(&inner);
         let update = move |u: RunUpdate| {
@@ -202,7 +227,7 @@ async fn work(inner: Arc<Inner>, runner: Arc<dyn Runner>, mut rx: mpsc::Unbounde
                     job.state = JobState::Processing;
                     job.progress = None;
                 }
-            })
+            });
         };
         let outcome = runner.run(&job, &token, &update).await;
         inner.update_and_emit(id, |job| {
@@ -283,7 +308,7 @@ mod tests {
     #[tokio::test]
     async fn runs_jobs_one_at_a_time_in_order() {
         let (queue, events) = start();
-        queue.enqueue(vec![request("a"), request("b")]);
+        queue.enqueue(vec![request("a"), request("b")], false);
         settle(&queue).await;
         let events = events.lock().unwrap();
         let started: Vec<&str> = events
@@ -302,7 +327,7 @@ mod tests {
     #[tokio::test]
     async fn cancel_queued_job_never_runs_it() {
         let (queue, events) = start();
-        let ids = queue.enqueue(vec![request("a"), request("b")]);
+        let ids = queue.enqueue(vec![request("a"), request("b")], false);
         queue.cancel(ids[1]);
         settle(&queue).await;
         assert_eq!(queue.jobs()[1].state, JobState::Canceled);
@@ -312,7 +337,7 @@ mod tests {
     #[tokio::test]
     async fn cancel_running_job_stops_it_and_the_next_one_runs() {
         let (queue, _) = start();
-        let ids = queue.enqueue(vec![request("a"), request("b")]);
+        let ids = queue.enqueue(vec![request("a"), request("b")], false);
         tokio::time::sleep(Duration::from_millis(10)).await;
         queue.cancel(ids[0]);
         settle(&queue).await;
@@ -322,9 +347,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn same_item_is_not_queued_twice_and_batches_skip_saved_ones() {
+        let (queue, _) = start();
+        let first = queue.enqueue(vec![request("a")], false);
+        assert_eq!(queue.enqueue(vec![request("a")], false), first, "double click queued it again");
+        settle(&queue).await;
+        assert_eq!(queue.enqueue(vec![request("a")], true), first, "batch re-downloaded a saved item");
+        let again = queue.enqueue(vec![request("a")], false);
+        assert_ne!(again, first, "a single click may save another copy");
+        settle(&queue).await;
+        assert_eq!(queue.jobs().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn every_emitted_snapshot_has_a_higher_rev() {
+        let (queue, events) = start();
+        let ids = queue.enqueue(vec![request("a")], false);
+        settle(&queue).await;
+        queue.cancel(ids[0]); // finished job: nothing changes, nothing is emitted
+        let revs: Vec<u64> = events.lock().unwrap().iter().map(|j| j.rev).collect();
+        assert!(revs.windows(2).all(|w| w[0] < w[1]), "{revs:?}");
+        assert_eq!(*revs.last().unwrap(), queue.jobs()[0].rev);
+    }
+
+    #[tokio::test]
     async fn failure_carries_its_error_code_and_does_not_stop_the_queue() {
         let (queue, _) = start();
-        queue.enqueue(vec![request("fail-1"), request("ok")]);
+        queue.enqueue(vec![request("fail-1"), request("ok")], false);
         settle(&queue).await;
         let jobs = queue.jobs();
         assert_eq!((jobs[0].state, jobs[0].error.as_deref()), (JobState::Failed, Some("download_failed")));

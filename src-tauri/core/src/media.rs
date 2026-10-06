@@ -6,6 +6,7 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 use crate::process::{self, SpawnError};
+use crate::tools::retry_io;
 use crate::tools::ToolPaths;
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -44,11 +45,13 @@ pub fn transcode_temp(file: &Path) -> PathBuf {
     file.with_file_name(format!("{stem}.h264.tmp.mp4"))
 }
 
+/// Converts to H.264/AAC and returns the result, always an `.mp4` (a `.webm`
+/// source is replaced by `<stem>.mp4`).
 pub async fn transcode_to_h264(
     paths: &ToolPaths,
     file: &Path,
     cancel: &CancellationToken,
-) -> Result<(), MediaError> {
+) -> Result<PathBuf, MediaError> {
     let temp = transcode_temp(file);
     let mut cmd = process::command(paths.ffmpeg());
     cmd.args(["-nostdin", "-y", "-v", "error", "-i"])
@@ -73,8 +76,19 @@ pub async fn transcode_to_h264(
         let _ = tokio::fs::remove_file(&temp).await;
         return Err(MediaError::Failed(stderr.await.unwrap_or_default()));
     }
-    tokio::fs::rename(&temp, file).await?;
-    Ok(())
+    let target = file.with_extension("mp4");
+    let (temp_owned, file_owned, target_owned) = (temp.clone(), file.to_owned(), target.clone());
+    // Explorer thumbnailing, OneDrive or Defender may hold the source briefly.
+    tokio::task::spawn_blocking(move || {
+        retry_io(|| std::fs::rename(&temp_owned, &target_owned))?;
+        if file_owned != target_owned {
+            retry_io(|| std::fs::remove_file(&file_owned))?;
+        }
+        Ok::<_, std::io::Error>(())
+    })
+    .await
+    .map_err(|e| MediaError::Io(std::io::Error::other(e)))??;
+    Ok(target)
 }
 
 fn read_stderr(spawned: &mut process::Spawned) -> tokio::task::JoinHandle<String> {
@@ -112,7 +126,8 @@ mod tests {
         assert!(made.status.success(), "{}", String::from_utf8_lossy(&made.stderr));
         assert_eq!(video_codec(&paths, &file).await.unwrap(), "vp9");
 
-        transcode_to_h264(&paths, &file, &CancellationToken::new()).await.unwrap();
+        let out = transcode_to_h264(&paths, &file, &CancellationToken::new()).await.unwrap();
+        assert_eq!(out, file);
         assert_eq!(video_codec(&paths, &file).await.unwrap(), "h264");
         assert!(!transcode_temp(&file).exists());
     }

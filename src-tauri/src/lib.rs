@@ -27,6 +27,7 @@ pub fn run() {
             commands::lookup,
             commands::enqueue,
             commands::cancel_job,
+            commands::list_jobs,
             commands::open_folder,
         ])
         .run(tauri::generate_context!())

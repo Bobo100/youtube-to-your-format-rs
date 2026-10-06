@@ -35,8 +35,12 @@ impl ProgressTracker {
         let json: Value = serde_json::from_str(line.strip_prefix(PROGRESS_PREFIX)?).ok()?;
         let file = json.get("filename").and_then(Value::as_str).map(str::to_owned);
         if file.is_some() && file != self.current {
-            if self.current.is_some() {
-                self.index = (self.index + 1).min(self.streams - 1);
+            match &self.current {
+                Some(_) => self.index = (self.index + 1).min(self.streams - 1),
+                // A merged download writes `<base>.f<format>.<ext>` per stream; a
+                // single-file fallback (`b`) writes `<base>.<ext>` and is the only stream.
+                None if !file.as_deref().is_some_and(is_format_stream) => self.streams = 1,
+                None => {}
             }
             self.current = file;
         }
@@ -51,6 +55,17 @@ impl ProgressTracker {
         let overall = (self.index as f64 + if finished { 1.0 } else { within }) / self.streams as f64;
         Some(LineEvent::Progress(overall.min(0.99)))
     }
+}
+
+fn is_format_stream(path: &str) -> bool {
+    let name = path.rsplit(['\\', '/']).next().unwrap_or(path);
+    let stem = name.rsplit_once('.').map_or(name, |(stem, _ext)| stem);
+    // YouTube format ids are numeric, optionally with a suffix: f133, f251-drc.
+    stem.rsplit_once('.').is_some_and(|(_, last)| {
+        let id = last.strip_prefix('f').unwrap_or_default();
+        id.starts_with(|c: char| c.is_ascii_digit())
+            && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    })
 }
 
 #[cfg(test)]
@@ -70,6 +85,21 @@ mod tests {
         assert_eq!(t.on_line(&line("finished", "a.f133.mp4", 100, 100)), Some(LineEvent::Progress(0.5)));
         assert_eq!(t.on_line(&line("downloading", "a.f140.m4a", 50, 100)), Some(LineEvent::Progress(0.75)));
         assert_eq!(t.on_line(&line("finished", "a.f140.m4a", 100, 100)), Some(LineEvent::Processing));
+    }
+
+    #[test]
+    fn single_file_fallback_reaches_full_progress() {
+        let mut t = ProgressTracker::new(2);
+        assert_eq!(t.on_line(&line("downloading", "a.mp4", 50, 100)), Some(LineEvent::Progress(0.5)));
+        assert_eq!(t.on_line(&line("finished", "a.mp4", 100, 100)), Some(LineEvent::Processing));
+    }
+
+    #[test]
+    fn recognises_per_format_stream_files() {
+        assert!(is_format_stream(r"C:\t\測試 100%.f133.mp4"));
+        assert!(is_format_stream("C:/t/a.f251-drc.webm"));
+        assert!(!is_format_stream(r"C:\t\歌.mp4"));
+        assert!(!is_format_stream(r"C:\t\Vol.final.mp4"));
     }
 
     #[test]

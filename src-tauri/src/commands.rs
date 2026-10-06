@@ -63,13 +63,15 @@ pub struct SaveItem {
     title: String,
 }
 
+/// `skip_done`: batch saves ("全部存成音樂") leave out items already saved.
 #[tauri::command]
-pub fn enqueue(queue: State<'_, Queue>, items: Vec<SaveItem>, format: SaveFormat) -> Vec<JobId> {
+pub fn enqueue(queue: State<'_, Queue>, items: Vec<SaveItem>, format: SaveFormat, skip_done: bool) -> Vec<JobId> {
     queue.enqueue(
         items
             .into_iter()
             .map(|item| Request { video_id: item.id, url: item.url, title: item.title, format })
             .collect(),
+        skip_done,
     )
 }
 
@@ -78,7 +80,14 @@ pub fn cancel_job(queue: State<'_, Queue>, id: JobId) {
     queue.cancel(id);
 }
 
-/// Only reveals files this app produced, so the frontend cannot open arbitrary paths.
+/// Lets the window rebuild its state after a reload.
+#[tauri::command]
+pub fn list_jobs(queue: State<'_, Queue>) -> Vec<Job> {
+    queue.jobs()
+}
+
+/// Only reveals files this app produced, so the frontend cannot open arbitrary
+/// paths. If the file was moved or deleted, opens the folder it was saved in.
 #[tauri::command]
 pub fn open_folder(queue: State<'_, Queue>, id: JobId) -> Result<(), String> {
     let path = queue
@@ -86,9 +95,17 @@ pub fn open_folder(queue: State<'_, Queue>, id: JobId) -> Result<(), String> {
         .into_iter()
         .find(|job| job.id == id)
         .and_then(|job| job.output_path)
+        .map(std::path::PathBuf::from)
         .ok_or_else(|| "not_found".to_owned())?;
-    tauri_plugin_opener::reveal_item_in_dir(path).map_err(|err| {
-        eprintln!("reveal failed: {err}");
+    let result = if path.exists() {
+        tauri_plugin_opener::reveal_item_in_dir(&path)
+    } else {
+        let dir = path.parent().map(std::path::Path::to_path_buf).unwrap_or_else(folders::default_output_dir);
+        std::fs::create_dir_all(&dir).ok();
+        tauri_plugin_opener::open_path(dir, None::<&str>)
+    };
+    result.map_err(|err| {
+        eprintln!("opening the folder failed: {err}");
         "open_failed".to_owned()
     })
 }

@@ -4,11 +4,12 @@ import { OtherJobs } from "../components/OtherJobs";
 import { VideoCardView } from "../components/VideoCardView";
 import { errorMessage, t } from "../i18n";
 import { ListIcon, MusicIcon, SearchIcon } from "../icons";
-import { latestJobFor } from "../jobs";
+import { latestJobFor, offScreenJobs } from "../jobs";
 
 type Props = {
   jobs: Job[];
-  onSave: (cards: VideoCard[], format: SaveFormat) => void;
+  /** `skipDone` is set by the batch button so saved songs are not fetched again. */
+  onSave: (cards: VideoCard[], format: SaveFormat, skipDone?: boolean) => Promise<void>;
 };
 
 type State =
@@ -83,16 +84,11 @@ export function Home({ jobs, onSave }: Props) {
       )}
 
       <OtherJobs
-        jobs={offScreenJobs(jobs, state)}
+        jobs={offScreenJobs(jobs, state.status === "done" ? state.result.items.map((card) => card.id) : [])}
         onRetry={(job) => onSave([{ id: job.videoId, url: job.url, title: job.title, channel: null, durationS: null, thumbnail: "" }], job.format)}
       />
     </>
   );
-}
-
-function offScreenJobs(jobs: Job[], state: State): Job[] {
-  const onScreen = new Set(state.status === "done" ? state.result.items.map((card) => card.id) : []);
-  return jobs.filter((job) => !onScreen.has(job.videoId)).reverse();
 }
 
 function announcement(state: State): string {
@@ -133,10 +129,7 @@ function Results({
           </p>
           {result.truncated && <p className="help">{t("playlistTruncated", { count: result.items.length })}</p>}
           {skippedNote}
-          <button className="btn" onClick={() => onSave(result.items, "audio")}>
-            <MusicIcon />
-            {t("saveAllAudio")}
-          </button>
+          <SaveAllButton onClick={() => onSave(result.items, "audio", true)} />
         </div>
       )}
       {result.kind === "search" && skippedNote}
@@ -156,5 +149,21 @@ function Results({
         </button>
       )}
     </section>
+  );
+}
+
+/** Guards against double clicks while the batch is being queued. */
+function SaveAllButton({ onClick }: { onClick: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const click = () => {
+    if (busy) return;
+    setBusy(true);
+    onClick().finally(() => setBusy(false));
+  };
+  return (
+    <button className="btn" aria-disabled={busy} onClick={click}>
+      <MusicIcon />
+      {t("saveAllAudio")}
+    </button>
   );
 }

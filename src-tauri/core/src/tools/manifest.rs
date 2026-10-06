@@ -24,5 +24,6 @@ pub const DENO: Pinned = Pinned {
 };
 
 pub const YTDLP_STABLE_REPO: &str = "yt-dlp/yt-dlp";
-pub const YTDLP_ASSET: &str = "yt-dlp.exe";
+/// The onedir build (exe + `_internal/`), not the onefile `yt-dlp.exe`.
+pub const YTDLP_ASSET: &str = "yt-dlp_win.zip";
 pub const YTDLP_SUMS_ASSET: &str = "SHA2-256SUMS";
