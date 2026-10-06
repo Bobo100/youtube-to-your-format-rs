@@ -30,7 +30,16 @@ pub fn run() {
                     .is_some_and(|state| state.close_confirmed.load(std::sync::atomic::Ordering::Relaxed));
                 if busy && !confirmed {
                     api.prevent_close();
-                    let _ = window.emit("confirm-close", ());
+                    let Some(state) = app.try_state::<commands::AppState>() else { return };
+                    let mut prompt = state.close_prompt.lock().unwrap();
+                    let unanswered = prompt.is_some_and(|(at, shown)| !shown && at.elapsed().as_secs() < 60);
+                    if unanswered {
+                        // The window never showed the question: do not trap the user.
+                        tauri::async_runtime::spawn(commands::shutdown_gracefully(app.clone()));
+                    } else {
+                        *prompt = Some((std::time::Instant::now(), false));
+                        let _ = window.emit("confirm-close", ());
+                    }
                 }
             }
         })
@@ -53,6 +62,7 @@ pub fn run() {
             commands::set_settings,
             commands::open_old_folder,
             commands::close_anyway,
+            commands::close_prompt_shown,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

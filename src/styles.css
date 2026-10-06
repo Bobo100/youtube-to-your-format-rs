@@ -1,4 +1,5 @@
 :root {
+  --track: #e2e8f0;
   --warn-bg: #fef3c7;
   --warn-line: #b45309;
   --warn-fg: #7c2d12;
@@ -74,7 +75,7 @@ body {
   height: 18px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: #e2e8f0;
+  background: var(--track);
   overflow: hidden;
 }
 
@@ -382,8 +383,10 @@ body {
   }
 }
 
-/* Dark mode is opt-in from 設定; every pair keeps AAA (7:1) contrast. */
+/* Dark mode is opt-in from 設定. Text pairs keep AAA (7:1); bars, borders and
+   focus rings keep at least 3:1 against what they sit on. */
 :root[data-theme="dark"] {
+  --track: #1e293b;
   --fg: #f1f5f9;
   --muted: #cbd5e1;
   --bg: #0b1220;
@@ -484,9 +487,23 @@ body {
   color: var(--accent-ink);
 }
 
+/* Outside the button: inside it, the ring would sit on the accent fill. */
 .seg button:focus-visible {
+  position: relative;
   outline: 3px solid var(--fg);
-  outline-offset: -3px;
+  outline-offset: 2px;
+}
+
+.seg {
+  overflow: visible;
+}
+
+.seg button:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.seg button:last-child {
+  border-radius: 0 8px 8px 0;
 }
 
 .overlay {

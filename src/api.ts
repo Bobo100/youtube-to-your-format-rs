@@ -121,9 +121,16 @@ export function getSettings(): Promise<SettingsView> {
   return invoke("get_settings");
 }
 
-/** Rejects with an error code such as "settings_save_failed". */
-export function setSettings(settings: AppSettings): Promise<SettingsView> {
-  return invoke("set_settings", { settings });
+/** Only the fields that changed; `outputDir: ""` resets to the default folder. */
+export type SettingsPatch = Partial<Omit<AppSettings, "outputDir">> & { outputDir?: string };
+
+/** Rejects with an error code such as "settings_save_failed" or "folder_not_writable". */
+export function setSettings(patch: SettingsPatch): Promise<SettingsView> {
+  return invoke("set_settings", { patch });
+}
+
+export function closePromptShown(): Promise<void> {
+  return invoke("close_prompt_shown");
 }
 
 export function openOldFolder(): Promise<void> {

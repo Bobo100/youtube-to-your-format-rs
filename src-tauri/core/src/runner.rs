@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::convert::{self, ConvertError};
 use crate::media::{self, MediaError};
-use crate::naming::{sanitize, unique_base};
+use crate::naming::{place_without_replacing, sanitize, unique_base};
 use crate::queue::{Job, JobKind, RunFuture, RunOutcome, RunUpdate, Runner, SaveFormat};
 use crate::applog;
 use crate::tools::update::Updater;
@@ -103,26 +103,35 @@ impl YtDlpRunner {
                 return RunOutcome::Failed { code: err.code(), detail: err.detail() };
             }
         };
-        if job.format != SaveFormat::Video {
-            return RunOutcome::Done(path);
-        }
-        update(RunUpdate::Processing);
-        // `--recode-video` only looks at the container (VP9 inside mp4 passes),
-        // so check the codec and convert only when needed.
-        match media::video_codec(&self.paths, &path).await {
-            Ok(codec) if codec == "h264" => RunOutcome::Done(path),
-            Ok(_) => match media::transcode_to_h264(&self.paths, &path, cancel).await {
-                Ok(converted) => RunOutcome::Done(converted),
-                Err(MediaError::Canceled) => RunOutcome::Canceled,
+        let path = if job.format != SaveFormat::Video {
+            path
+        } else {
+            update(RunUpdate::Processing);
+            // `--recode-video` only looks at the container (VP9 inside mp4 passes),
+            // so check the codec and convert only when needed.
+            match media::video_codec(&self.paths, &path).await {
+                Ok(codec) if codec == "h264" => path,
+                Ok(_) => match media::transcode_to_h264(&self.paths, &path, cancel).await {
+                    Ok(converted) => converted,
+                    Err(MediaError::Canceled) => return RunOutcome::Canceled,
+                    Err(err) => {
+                        applog!("converting {} failed: {err}", path.display());
+                        return RunOutcome::Failed { code: media_code(&err), detail: err.to_string() };
+                    }
+                },
+                // The file is already downloaded and usually H.264 anyway: keep it.
                 Err(err) => {
-                    applog!("converting {} failed: {err}", path.display());
-                    RunOutcome::Failed { code: media_code(&err), detail: err.to_string() }
+                    applog!("ffprobe on {} failed, keeping the file: {err}", path.display());
+                    path
                 }
-            },
-            // The file is already downloaded and usually H.264 anyway: keep it.
+            }
+        };
+        let ext = path.extension().map_or_else(|| job.format.extension().to_owned(), |e| e.to_string_lossy().into_owned());
+        match place_without_replacing(&path, dir, base, &ext) {
+            Ok(done) => RunOutcome::Done(done),
             Err(err) => {
-                applog!("ffprobe on {} failed, keeping the file: {err}", path.display());
-                RunOutcome::Done(path)
+                let err = DownloadError::Io(err);
+                RunOutcome::Failed { code: err.code(), detail: err.to_string() }
             }
         }
     }

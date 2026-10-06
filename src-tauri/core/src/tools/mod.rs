@@ -20,7 +20,7 @@ use serde::Serialize;
 use crate::process::{self, SpawnError};
 use download::with_retry;
 use install::{extract_7z, extract_zip, extract_zip_tree, new_path, replace_with_new, rollback};
-pub(crate) use install::retry_io;
+pub use install::retry_io;
 pub use checksum::sha256_file;
 use manifest::{Pinned, DENO, FFMPEG};
 use state::ToolState;

@@ -38,11 +38,62 @@ pub enum Language {
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     /// `None` = `<Downloads>\YouTube`.
+    #[serde(deserialize_with = "lenient")]
     pub output_dir: Option<PathBuf>,
+    #[serde(deserialize_with = "lenient")]
     pub font_size: FontSize,
+    #[serde(deserialize_with = "lenient")]
     pub theme: Theme,
+    #[serde(deserialize_with = "lenient")]
     pub language: Language,
+    #[serde(deserialize_with = "lenient")]
     pub old_folder_hint_dismissed: bool,
+}
+
+/// One unreadable value (say, written by a newer version) resets only that
+/// field, not the whole file.
+fn lenient<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned + Default,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(serde_json::from_value(value).unwrap_or_default())
+}
+
+/// Fields the settings screen changes; absent ones keep their value. Merging
+/// on the Rust side under one lock means two quick clicks cannot undo each other.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsPatch {
+    pub font_size: Option<FontSize>,
+    pub theme: Option<Theme>,
+    pub language: Option<Language>,
+    pub old_folder_hint_dismissed: Option<bool>,
+    /// `Some("")` resets to the default folder.
+    pub output_dir: Option<String>,
+}
+
+impl SettingsPatch {
+    pub fn apply(&self, settings: &Settings) -> Settings {
+        Settings {
+            font_size: self.font_size.unwrap_or(settings.font_size),
+            theme: self.theme.unwrap_or(settings.theme),
+            language: self.language.unwrap_or(settings.language),
+            old_folder_hint_dismissed: self.old_folder_hint_dismissed.unwrap_or(settings.old_folder_hint_dismissed),
+            output_dir: match &self.output_dir {
+                None => settings.output_dir.clone(),
+                Some(dir) if dir.is_empty() => None,
+                Some(dir) => Some(PathBuf::from(dir)),
+            },
+        }
+    }
+}
+
+/// True when a file can be created in `dir` (Program Files, `C:\`, folders
+/// under Controlled Folder Access cannot be written).
+pub fn can_write(dir: &Path) -> bool {
+    tempfile::Builder::new().prefix(".ytf-check").tempfile_in(dir).is_ok()
 }
 
 impl Settings {
@@ -51,9 +102,11 @@ impl Settings {
     }
 
     /// A missing file means defaults. A damaged one is kept aside as
-    /// `settings.broken.json` (for Bobo to look at) and defaults are used.
+    /// `settings.broken.json` (for Bobo to look at) and defaults are used. A
+    /// file that exists but is briefly locked is retried, not treated as absent
+    /// (that would overwrite the real settings on the next save).
     pub fn load(path: &Path) -> Self {
-        let Ok(bytes) = std::fs::read(path) else {
+        let Ok(bytes) = crate::tools::retry_io(|| std::fs::read(path)) else {
             return Self::default();
         };
         match serde_json::from_slice(&bytes) {
@@ -74,7 +127,7 @@ impl Settings {
         file.write_all(&serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?)?;
         file.sync_all()?;
         drop(file);
-        std::fs::rename(&tmp, path)
+        crate::tools::retry_io(|| std::fs::rename(&tmp, path))
     }
 
     /// Where downloads go now. A chosen folder that is gone (a USB stick that
@@ -124,6 +177,33 @@ mod tests {
         std::fs::write(&path, br#"{"theme":"dark"}"#).unwrap();
         assert_eq!(Settings::load(&path).theme, Theme::Dark);
         assert_eq!(Settings::load(&path).font_size, FontSize::Xlarge);
+    }
+
+    #[test]
+    fn an_unknown_value_resets_only_its_field() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, br#"{"theme":"sepia","language":"en"}"#).unwrap();
+        let settings = Settings::load(&path);
+        assert_eq!((settings.theme, settings.language), (Theme::Light, Language::En));
+    }
+
+    #[test]
+    fn patches_change_only_their_fields() {
+        let base = Settings { theme: Theme::Dark, output_dir: Some("D:/music".into()), ..Settings::default() };
+        let small = SettingsPatch { font_size: Some(FontSize::Large), ..SettingsPatch::default() }.apply(&base);
+        assert_eq!((small.font_size, small.theme), (FontSize::Large, Theme::Dark));
+        assert_eq!(small.output_dir, base.output_dir);
+        let reset = SettingsPatch { output_dir: Some(String::new()), ..SettingsPatch::default() }.apply(&base);
+        assert_eq!(reset.output_dir, None);
+    }
+
+    #[test]
+    fn writable_check() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(can_write(dir.path()));
+        assert!(!can_write(Path::new(r"Z:\no-such-drive")));
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0, "the probe file is removed");
     }
 
     #[test]

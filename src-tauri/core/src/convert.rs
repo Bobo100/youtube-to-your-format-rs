@@ -15,7 +15,7 @@ use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::sync::CancellationToken;
 
-use crate::naming::sanitize;
+use crate::naming::{place_without_replacing, sanitize};
 use crate::process::{self, SpawnError};
 use crate::queue::SaveFormat;
 use crate::tools::ToolPaths;
@@ -98,24 +98,7 @@ pub fn reserve(source: &Path, format: SaveFormat, fallback_dir: &Path) -> io::Re
 impl Reservation {
     /// Gives the finished file its final name without ever replacing a file.
     pub fn finish(self) -> io::Result<PathBuf> {
-        for n in 1.. {
-            let name = if n == 1 { self.wanted.clone() } else { format!("{} ({n})", self.wanted) };
-            let target = self.dir.join(format!("{name}.{}", self.ext));
-            match std::fs::hard_link(&self.part, &target) {
-                Ok(()) => {
-                    let _ = std::fs::remove_file(&self.part);
-                    return Ok(target);
-                }
-                Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
-                // FAT32 USB sticks have no hard links; fall back to a checked rename.
-                Err(_) if !target.exists() => {
-                    std::fs::rename(&self.part, &target)?;
-                    return Ok(target);
-                }
-                Err(_) => continue,
-            }
-        }
-        unreachable!("an unbounded range always finds a free name")
+        place_without_replacing(&self.part, &self.dir, &self.wanted, self.ext)
     }
 
     pub fn discard(self) {

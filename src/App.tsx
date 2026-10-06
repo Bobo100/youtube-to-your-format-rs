@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import {
   closeAnyway,
@@ -11,6 +12,7 @@ import {
   prepareTools,
   setSettings,
   type AppSettings,
+  type SettingsPatch,
   type Job,
   type SaveFormat,
   type SettingsView,
@@ -37,7 +39,17 @@ function applySettings(settings: AppSettings) {
   root.dataset.theme = settings.theme;
   root.lang = settings.language === "en" ? "en" : "zh-Hant-TW";
   setLanguage(settings.language);
+  document.title = t("appTitle");
+  getCurrentWindow().setTitle(t("appTitle")).catch(() => undefined);
 }
+
+const DEFAULT_VIEW: SettingsView = {
+  settings: { outputDir: null, fontSize: "xlarge", theme: "light", language: "zh", oldFolderHintDismissed: true },
+  outputDir: "",
+  oldFolder: null,
+  appVersion: "",
+  ytdlpVersion: null,
+};
 
 const FIRST_CONTROL: Record<Screen, string> = { home: "what", convert: "drop-zone", settings: "back" };
 
@@ -50,22 +62,44 @@ export default function App() {
   const [view, setView] = useState<SettingsView | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [oldFolderError, setOldFolderError] = useState(false);
+  const latestSave = useRef(0);
+  const focusBeforeDialog = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    getSettings().then((loaded) => {
-      applySettings(loaded.settings);
-      setView(loaded);
-    });
+    getSettings()
+      .catch(() => DEFAULT_VIEW)
+      .then((loaded) => {
+        applySettings(loaded.settings);
+        setView(loaded);
+      });
   }, []);
 
-  const changeSettings = (settings: AppSettings) => {
+  /** Applies at once; the answer from Rust (which merges patches in order) wins. */
+  const changeSettings = (patch: SettingsPatch) => {
     setSettingsError(null);
-    setSettings(settings)
+    const request = ++latestSave.current;
+    setView((current) => {
+      if (!current) return current;
+      const { outputDir, ...rest } = patch;
+      const settings: AppSettings = { ...current.settings, ...rest };
+      if (outputDir !== undefined) settings.outputDir = outputDir || null;
+      applySettings(settings);
+      return { ...current, settings };
+    });
+    setSettings(patch)
       .then((saved) => {
+        if (request !== latestSave.current) return;
         applySettings(saved.settings);
         setView(saved);
       })
-      .catch((code: unknown) => setSettingsError(String(code)));
+      .catch((code: unknown) => {
+        setSettingsError(String(code));
+        getSettings().then((stored) => {
+          applySettings(stored.settings);
+          setView(stored);
+        });
+      });
   };
 
   // The pressed header button unmounts on a screen change; give focus to the
@@ -80,7 +114,10 @@ export default function App() {
     let cancelled = false;
     Promise.all([
       onJobUpdated((job) => setJobs((current) => upsertJob(current, job))),
-      listen("confirm-close", () => setConfirmClose(true)),
+      listen("confirm-close", () => {
+        focusBeforeDialog.current = document.activeElement as HTMLElement | null;
+        setConfirmClose(true);
+      }),
     ]).then((unlisteners) => {
       if (cancelled) {
         unlisteners.forEach((stop) => stop());
@@ -133,13 +170,21 @@ export default function App() {
     };
   }, [prepare]);
 
-  const dismissOldFolder = () => view && changeSettings({ ...view.settings, oldFolderHintDismissed: true });
+  const dismissOldFolder = () => {
+    changeSettings({ oldFolderHintDismissed: true });
+    setView((current) => current && { ...current, oldFolder: null });
+  };
+
+  const keepDownloading = () => {
+    setConfirmClose(false);
+    focusBeforeDialog.current?.focus();
+  };
 
   if (!view) return null;
 
   return (
     <div className="app">
-      <header className="top">
+      <header className="top" inert={confirmClose}>
         {screen === "home" ? (
           <span>{t("appTitle")}</span>
         ) : (
@@ -162,7 +207,7 @@ export default function App() {
         )}
         {screen !== "home" && <span>{t(screen === "convert" ? "convert" : "settings")}</span>}
       </header>
-      <main className="body">
+      <main className="body" inert={confirmClose}>
         {phase === "preparing" ? (
           <Preparing progress={progress} error={error} onRetry={retry} />
         ) : (
@@ -173,13 +218,20 @@ export default function App() {
                 <div className="notice" role="status">
                   <p>{t("oldFolderHint", { folder: dirLabel(view.oldFolder) })}</p>
                   <div className="acts">
-                    <button className="btn sec" onClick={() => openOldFolder().catch(() => undefined)}>
+                    <button
+                      className="btn sec"
+                      onClick={() => {
+                        setOldFolderError(false);
+                        openOldFolder().catch(() => setOldFolderError(true));
+                      }}
+                    >
                       {t("openOldFolder")}
                     </button>
                     <button className="btn sec" onClick={dismissOldFolder}>
                       {t("dismiss")}
                     </button>
                   </div>
+                  {oldFolderError && <p className="warn">{t("error.open_failed")}</p>}
                 </div>
               )}
               <Home jobs={jobs} onSave={save} />
@@ -189,7 +241,7 @@ export default function App() {
           </>
         )}
       </main>
-      {confirmClose && <CloseDialog onKeep={() => setConfirmClose(false)} onClose={() => closeAnyway()} />}
+      {confirmClose && <CloseDialog onKeep={keepDownloading} onClose={closeAnyway} />}
     </div>
   );
 }

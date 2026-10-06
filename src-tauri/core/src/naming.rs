@@ -2,7 +2,8 @@
 //! `<base>.` — `unique_base` guarantees no such file existed before — so
 //! cancelling can safely delete them all.
 
-use std::path::Path;
+use std::io::{self, ErrorKind};
+use std::path::{Path, PathBuf};
 
 /// UTF-16 units, the way Windows counts path length: leaves room under the
 /// 260-character MAX_PATH for the folder and `.f299.mp4.part` style suffixes.
@@ -60,6 +61,32 @@ pub fn unique_base(dir: &Path, base: &str) -> String {
         .map(|n| if n == 1 { base.to_owned() } else { format!("{base} ({n})") })
         .find(|candidate| free(candidate))
         .expect("an unbounded range always finds a free name")
+}
+
+/// Gives a finished working file its final name `<wanted>.<ext>` (or
+/// `<wanted> (2).<ext>`…) without ever replacing an existing file. Downloads
+/// and conversions both write under a working name first, so a process killed
+/// mid-write (app closed, Windows shutting down) never leaves a truncated file
+/// with a clean-looking name.
+pub fn place_without_replacing(part: &Path, dir: &Path, wanted: &str, ext: &str) -> io::Result<PathBuf> {
+    for n in 1.. {
+        let name = if n == 1 { wanted.to_owned() } else { format!("{wanted} ({n})") };
+        let target = dir.join(format!("{name}.{ext}"));
+        match std::fs::hard_link(part, &target) {
+            Ok(()) => {
+                let _ = std::fs::remove_file(part);
+                return Ok(target);
+            }
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
+            // FAT32 USB sticks have no hard links; fall back to a checked rename.
+            Err(_) if !target.exists() => {
+                std::fs::rename(part, &target)?;
+                return Ok(target);
+            }
+            Err(_) => continue,
+        }
+    }
+    unreachable!("an unbounded range always finds a free name")
 }
 
 /// yt-dlp reads `-o` as a template: a literal `%` in a title must be doubled.

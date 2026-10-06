@@ -12,7 +12,7 @@ use ytf_core::folders;
 use ytf_core::queue::{Job, JobId, JobKind, Queue, Request, SaveFormat};
 use ytf_core::reqwest;
 use ytf_core::runner::YtDlpRunner;
-use ytf_core::settings::{self as app_settings, Settings};
+use ytf_core::settings::{self as app_settings, Settings, SettingsPatch};
 use ytf_core::tools::update::Updater;
 use ytf_core::tools::{self, ToolPaths};
 use ytf_core::ytdlp::{self, Input, Lookup};
@@ -25,6 +25,10 @@ pub struct AppState {
     settings_path: PathBuf,
     /// Set once the user confirmed closing while jobs were still running.
     pub close_confirmed: AtomicBool,
+    /// When the close question was last sent and whether the window showed it.
+    /// If the webview never answers (crashed, reloading), a second close goes through.
+    pub close_prompt: std::sync::Mutex<Option<(std::time::Instant, bool)>>,
+    settings_save: tokio::sync::Mutex<()>,
     client: reqwest::Client,
     paths: ToolPaths,
     updater: Arc<Updater>,
@@ -41,6 +45,8 @@ impl AppState {
             settings: Arc::new(RwLock::new(Settings::load(&settings_path))),
             settings_path,
             close_confirmed: AtomicBool::new(false),
+            close_prompt: std::sync::Mutex::new(None),
+            settings_save: tokio::sync::Mutex::new(()),
             updater: Updater::new(paths.clone(), client.clone()),
             client,
             paths,
@@ -217,7 +223,12 @@ pub fn start_queue(app: &AppHandle, state: &AppState) -> Queue {
         updater: Arc::clone(&state.updater),
         output_dir: {
             let settings = Arc::clone(&state.settings);
-            Box::new(move || settings.read().unwrap().effective_output_dir())
+            // Clone first: effective_output_dir touches the disk, which can be slow,
+            // and must not hold the lock set_settings needs.
+            Box::new(move || {
+                let current = settings.read().unwrap().clone();
+                current.effective_output_dir()
+            })
         },
     };
     let emitter = app.clone();
@@ -273,18 +284,29 @@ fn settings_view(state: &AppState) -> SettingsView {
     }
 }
 
+// async: these touch the disk (a sleeping USB drive can take seconds), and
+// synchronous commands run on the UI thread.
 #[tauri::command]
-pub fn get_settings(state: State<'_, AppState>) -> SettingsView {
-    settings_view(&state)
+pub async fn get_settings(state: State<'_, AppState>) -> Result<SettingsView, String> {
+    Ok(settings_view(&state))
 }
 
 #[tauri::command]
-pub fn set_settings(state: State<'_, AppState>, settings: Settings) -> Result<SettingsView, String> {
-    settings.save(&state.settings_path).map_err(|err| {
-        applog!("saving settings failed: {err}");
-        "settings_save_failed".to_owned()
-    })?;
-    *state.settings.write().unwrap() = settings;
+pub async fn set_settings(state: State<'_, AppState>, patch: SettingsPatch) -> Result<SettingsView, String> {
+    if let Some(dir) = patch.output_dir.as_deref().filter(|dir| !dir.is_empty()) {
+        if !app_settings::can_write(std::path::Path::new(dir)) {
+            return Err("folder_not_writable".to_owned());
+        }
+    }
+    {
+        let _save = state.settings_save.lock().await;
+        let next = patch.apply(&state.settings.read().unwrap());
+        next.save(&state.settings_path).map_err(|err| {
+            applog!("saving settings failed: {err}");
+            "settings_save_failed".to_owned()
+        })?;
+        *state.settings.write().unwrap() = next;
+    }
     Ok(settings_view(&state))
 }
 
@@ -299,15 +321,28 @@ pub fn open_old_folder() -> Result<(), String> {
 /// give the runners a moment to delete their unfinished files: a hard kill by
 /// the Job Object can leave a truncated `.mp3` with a clean-looking name.
 #[tauri::command]
-pub async fn close_anyway(app: AppHandle, state: State<'_, AppState>, queue: State<'_, Queue>) -> Result<(), String> {
+pub async fn close_anyway(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     state.close_confirmed.store(true, Ordering::Relaxed);
-    queue.cancel_all();
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
-    while queue.has_active() && std::time::Instant::now() < deadline {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.close();
-    }
+    shutdown_gracefully(app).await;
     Ok(())
+}
+
+/// The window acknowledges that it is showing the close question.
+#[tauri::command]
+pub fn close_prompt_shown(state: State<'_, AppState>) {
+    if let Some((_, shown)) = state.close_prompt.lock().unwrap().as_mut() {
+        *shown = true;
+    }
+}
+
+/// Cancels everything, lets the runners clean up (at most 10 s), then exits.
+pub async fn shutdown_gracefully(app: AppHandle) {
+    if let Some(queue) = app.try_state::<Queue>() {
+        queue.cancel_all();
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while queue.has_active() && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+    app.exit(0);
 }
