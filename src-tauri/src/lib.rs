@@ -1,6 +1,6 @@
 mod commands;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,6 +21,28 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let app = window.app_handle();
+                let busy = app.try_state::<ytf_core::queue::Queue>().is_some_and(|queue| queue.has_active());
+                let confirmed = app
+                    .try_state::<commands::AppState>()
+                    .is_some_and(|state| state.close_confirmed.load(std::sync::atomic::Ordering::Relaxed));
+                if busy && !confirmed {
+                    api.prevent_close();
+                    let Some(state) = app.try_state::<commands::AppState>() else { return };
+                    let mut prompt = state.close_prompt.lock().unwrap();
+                    let unanswered = prompt.is_some_and(|(at, shown)| !shown && at.elapsed().as_secs() < 60);
+                    if unanswered {
+                        // The window never showed the question: do not trap the user.
+                        tauri::async_runtime::spawn(commands::shutdown_gracefully(app.clone()));
+                    } else {
+                        *prompt = Some((std::time::Instant::now(), false));
+                        let _ = window.emit("confirm-close", ());
+                    }
+                }
+            }
+        })
         .setup(move |app| {
             let queue = commands::start_queue(app.handle(), &state);
             app.manage(state);
@@ -36,6 +58,11 @@ pub fn run() {
             commands::diagnostics,
             commands::open_folder,
             commands::convert_files,
+            commands::get_settings,
+            commands::set_settings,
+            commands::open_old_folder,
+            commands::close_anyway,
+            commands::close_prompt_shown,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

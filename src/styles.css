@@ -1,4 +1,10 @@
 :root {
+  --track: #e2e8f0;
+  --warn-bg: #fef3c7;
+  --warn-line: #b45309;
+  --warn-fg: #7c2d12;
+  --ok-fg: #14532d;
+  --chip-on: #e0edfa;
   --fg: #0b1220;
   --muted: #334155;
   --bg: #f8fafc;
@@ -69,7 +75,7 @@ body {
   height: 18px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: #e2e8f0;
+  background: var(--track);
   overflow: hidden;
 }
 
@@ -374,5 +380,154 @@ body {
   .chip.on {
     border-width: 5px;
     border-color: Highlight;
+  }
+}
+
+/* Dark mode is opt-in from 設定. Text pairs keep AAA (7:1); bars, borders and
+   focus rings keep at least 3:1 against what they sit on. */
+:root[data-theme="dark"] {
+  --track: #1e293b;
+  --fg: #f1f5f9;
+  --muted: #cbd5e1;
+  --bg: #0b1220;
+  --card: #111a2e;
+  --line: #64748b;
+  --accent: #93c5fd;
+  --accent-ink: #06223f;
+  --warn-bg: #3b2a06;
+  --warn-line: #f59e0b;
+  --warn-fg: #fde68a;
+  --ok-fg: #86efac;
+  --chip-on: #1e3a5f;
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+}
+
+.warn {
+  background: var(--warn-bg);
+  border-color: var(--warn-line);
+  color: var(--warn-fg);
+}
+
+.status.ok {
+  color: var(--ok-fg);
+}
+
+.chip.on,
+.drop.over {
+  background: var(--chip-on);
+  color: var(--fg);
+}
+
+.inp {
+  background: var(--card);
+}
+
+.tools {
+  display: inline-flex;
+  gap: 10px;
+}
+
+.notice {
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.notice p {
+  margin: 0;
+  font-weight: bold;
+}
+
+.set {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 2px solid var(--line);
+  font-weight: bold;
+}
+
+.set.column {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.set.column .status {
+  font-weight: normal;
+}
+
+.seg {
+  display: inline-flex;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.seg button {
+  min-height: 48px;
+  min-width: 72px;
+  padding: 0 16px;
+  border: 0;
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.seg button.on {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* Outside the button: inside it, the ring would sit on the accent fill. */
+.seg button:focus-visible {
+  position: relative;
+  outline: 3px solid var(--fg);
+  outline-offset: 2px;
+}
+
+.seg {
+  overflow: visible;
+}
+
+.seg button:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.seg button:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 55%);
+}
+
+.dialog {
+  max-width: 520px;
+  padding: 22px;
+  border: 3px solid var(--fg);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--fg);
+}
+
+@media (forced-colors: active) {
+  .seg button.on {
+    outline: 4px solid Highlight;
+    outline-offset: -4px;
   }
 }

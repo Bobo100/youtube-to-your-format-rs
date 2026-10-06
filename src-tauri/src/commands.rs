@@ -1,16 +1,18 @@
 //! The only interface the frontend can call (contract: docs/rust-rewrite/design.md).
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use ytf_core::applog;
 use ytf_core::folders;
 use ytf_core::queue::{Job, JobId, JobKind, Queue, Request, SaveFormat};
 use ytf_core::reqwest;
 use ytf_core::runner::YtDlpRunner;
+use ytf_core::settings::{self as app_settings, Settings, SettingsPatch};
 use ytf_core::tools::update::Updater;
 use ytf_core::tools::{self, ToolPaths};
 use ytf_core::ytdlp::{self, Input, Lookup};
@@ -19,6 +21,14 @@ use ytf_core::ytdlp::{self, Input, Lookup};
 const UPDATE_POLL: Duration = Duration::from_secs(6 * 60 * 60);
 
 pub struct AppState {
+    settings: Arc<RwLock<Settings>>,
+    settings_path: PathBuf,
+    /// Set once the user confirmed closing while jobs were still running.
+    pub close_confirmed: AtomicBool,
+    /// When the close question was last sent and whether the window showed it.
+    /// If the webview never answers (crashed, reloading), a second close goes through.
+    pub close_prompt: std::sync::Mutex<Option<(std::time::Instant, bool)>>,
+    settings_save: tokio::sync::Mutex<()>,
     client: reqwest::Client,
     paths: ToolPaths,
     updater: Arc<Updater>,
@@ -30,7 +40,13 @@ impl AppState {
     pub fn new() -> Result<Self, String> {
         let client = tools::http_client().map_err(|e| e.to_string())?;
         let paths = ToolPaths::from_env().map_err(|e| e.to_string())?;
+        let settings_path = Settings::path().ok_or("LOCALAPPDATA is not set")?;
         Ok(Self {
+            settings: Arc::new(RwLock::new(Settings::load(&settings_path))),
+            settings_path,
+            close_confirmed: AtomicBool::new(false),
+            close_prompt: std::sync::Mutex::new(None),
+            settings_save: tokio::sync::Mutex::new(()),
             updater: Updater::new(paths.clone(), client.clone()),
             client,
             paths,
@@ -205,7 +221,15 @@ pub fn start_queue(app: &AppHandle, state: &AppState) -> Queue {
     let runner = YtDlpRunner {
         paths: state.paths.clone(),
         updater: Arc::clone(&state.updater),
-        output_dir: Box::new(folders::default_output_dir),
+        output_dir: {
+            let settings = Arc::clone(&state.settings);
+            // Clone first: effective_output_dir touches the disk, which can be slow,
+            // and must not hold the lock set_settings needs.
+            Box::new(move || {
+                let current = settings.read().unwrap().clone();
+                current.effective_output_dir()
+            })
+        },
     };
     let emitter = app.clone();
     let (queue, worker) = Queue::new(Arc::new(runner), move |job: &Job| {
@@ -230,4 +254,95 @@ pub fn convert_files(queue: State<'_, Queue>, paths: Vec<String>, format: SaveFo
             .collect(),
         false,
     )
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsView {
+    settings: Settings,
+    /// The folder downloads go to right now (the default if the chosen one is gone).
+    output_dir: String,
+    old_folder: Option<String>,
+    app_version: &'static str,
+    ytdlp_version: Option<String>,
+}
+
+fn settings_view(state: &AppState) -> SettingsView {
+    let settings = state.settings.read().unwrap().clone();
+    let tools: serde_json::Value = std::fs::read(state.paths.bin.join("state.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default();
+    SettingsView {
+        output_dir: settings.effective_output_dir().display().to_string(),
+        old_folder: app_settings::old_download_folder()
+            .filter(|_| !settings.old_folder_hint_dismissed)
+            .map(|dir| dir.display().to_string()),
+        app_version: env!("CARGO_PKG_VERSION"),
+        ytdlp_version: tools.get("ytdlp").and_then(|v| v.as_str()).map(str::to_owned),
+        settings,
+    }
+}
+
+// async: these touch the disk (a sleeping USB drive can take seconds), and
+// synchronous commands run on the UI thread.
+#[tauri::command]
+pub async fn get_settings(state: State<'_, AppState>) -> Result<SettingsView, String> {
+    Ok(settings_view(&state))
+}
+
+#[tauri::command]
+pub async fn set_settings(state: State<'_, AppState>, patch: SettingsPatch) -> Result<SettingsView, String> {
+    if let Some(dir) = patch.output_dir.as_deref().filter(|dir| !dir.is_empty()) {
+        if !app_settings::can_write(std::path::Path::new(dir)) {
+            return Err("folder_not_writable".to_owned());
+        }
+    }
+    {
+        let _save = state.settings_save.lock().await;
+        let next = patch.apply(&state.settings.read().unwrap());
+        next.save(&state.settings_path).map_err(|err| {
+            applog!("saving settings failed: {err}");
+            "settings_save_failed".to_owned()
+        })?;
+        *state.settings.write().unwrap() = next;
+    }
+    Ok(settings_view(&state))
+}
+
+/// Opens the old Electron version's download folder ("以前存的歌在這裡").
+#[tauri::command]
+pub fn open_old_folder() -> Result<(), String> {
+    let dir = app_settings::old_download_folder().ok_or_else(|| "not_found".to_owned())?;
+    tauri_plugin_opener::open_path(dir, None::<&str>).map_err(|_| "open_failed".to_owned())
+}
+
+/// The user confirmed closing although jobs were running. Cancel them first and
+/// give the runners a moment to delete their unfinished files: a hard kill by
+/// the Job Object can leave a truncated `.mp3` with a clean-looking name.
+#[tauri::command]
+pub async fn close_anyway(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    state.close_confirmed.store(true, Ordering::Relaxed);
+    shutdown_gracefully(app).await;
+    Ok(())
+}
+
+/// The window acknowledges that it is showing the close question.
+#[tauri::command]
+pub fn close_prompt_shown(state: State<'_, AppState>) {
+    if let Some((_, shown)) = state.close_prompt.lock().unwrap().as_mut() {
+        *shown = true;
+    }
+}
+
+/// Cancels everything, lets the runners clean up (at most 10 s), then exits.
+pub async fn shutdown_gracefully(app: AppHandle) {
+    if let Some(queue) = app.try_state::<Queue>() {
+        queue.cancel_all();
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while queue.has_active() && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+    app.exit(0);
 }

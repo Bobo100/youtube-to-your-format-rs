@@ -58,6 +58,7 @@ impl DownloadError {
             Self::Spawn(SpawnError::TimedOut(_)) => "network",
             Self::Failed { stderr } => classify(stderr).code(),
             Self::Io(e) if e.kind() == std::io::ErrorKind::StorageFull => "disk_full",
+            Self::Io(e) if e.kind() == std::io::ErrorKind::PermissionDenied => "folder_not_writable",
             Self::Canceled => "canceled",
             _ => "extractor",
         }
@@ -109,7 +110,8 @@ pub fn download_args(
     cookies: Option<&Path>,
 ) -> Vec<OsString> {
     let mut args = base_args(paths);
-    let template = dir.join(format!("{}.%(ext)s", escape_template(base)));
+    // `<base>.ytf.<ext>` until the runner finishes the job (see `place_without_replacing`).
+    let template = dir.join(format!("{}.{WORKING_MARK}.%(ext)s", escape_template(base)));
     args.extend(
         [
             "--newline",
@@ -146,6 +148,9 @@ pub fn download_args(
     args.extend([OsString::from("-o"), template.into_os_string(), "--".into(), url.into()]);
     args
 }
+
+/// Marks files a job is still working on; still covered by the `<base>.` cleanup prefix.
+pub const WORKING_MARK: &str = "ytf";
 
 pub enum Update {
     Progress(f64),
@@ -232,7 +237,7 @@ mod tests {
         assert!(a.contains(&"--no-overwrites".to_owned()) && a.contains(&"--no-playlist".to_owned()));
         assert_eq!(
             &a[a.len() - 4..],
-            ["-o", r"C:\Users\a\Downloads\YouTube\100%% 好聽.%(ext)s", "--", "https://youtu.be/abc"]
+            ["-o", r"C:\Users\a\Downloads\YouTube\100%% 好聽.ytf.%(ext)s", "--", "https://youtu.be/abc"]
         );
         assert!(!a.contains(&"--cookies".to_owned()));
     }

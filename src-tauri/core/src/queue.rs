@@ -195,6 +195,15 @@ impl Queue {
         self.inner.details.lock().unwrap().get(&id).cloned()
     }
 
+    /// Cancels everything queued or running (before closing the app, so each
+    /// runner deletes its unfinished files instead of being killed mid-write).
+    pub fn cancel_all(&self) {
+        let active: Vec<JobId> = self.inner.jobs.lock().unwrap().iter().filter(|j| j.state.is_active()).map(|j| j.id).collect();
+        for id in active {
+            self.cancel(id);
+        }
+    }
+
     pub fn jobs(&self) -> Vec<Job> {
         self.inner.jobs.lock().unwrap().clone()
     }
@@ -401,6 +410,16 @@ mod tests {
         let revs: Vec<u64> = events.lock().unwrap().iter().map(|j| j.rev).collect();
         assert!(revs.windows(2).all(|w| w[0] < w[1]), "{revs:?}");
         assert_eq!(*revs.last().unwrap(), queue.jobs()[0].rev);
+    }
+
+    #[tokio::test]
+    async fn cancel_all_stops_running_and_queued_jobs() {
+        let (queue, _) = start();
+        queue.enqueue(vec![request("a"), request("b"), request("c")], false);
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        queue.cancel_all();
+        settle(&queue).await;
+        assert!(queue.jobs().iter().all(|j| j.state == JobState::Canceled), "{:?}", queue.jobs());
     }
 
     #[tokio::test]
