@@ -26,12 +26,43 @@ Deviation: 驗證視窗原本用 `npm run tauri dev` → 改用 `npm run rs:buil
 
 ## W02 — 子行程與工具安裝(`process.rs`、`tools`)
 
-- [ ] `process.rs`:`CREATE_NO_WINDOW`、Job Object + `KILL_ON_JOB_CLOSE`、UTF-8、區分「不見了 / 被拒」
-- [ ] ffmpeg:選定 BtbN 有版本號的 win64 gpl build,確認含 ffprobe,重新上傳到 release `tools-ffmpeg-<版本>`(非 latest),附 GPL 原始碼連結
-- [ ] Deno:選定版本並確認符合 yt-dlp 最低需求
-- [ ] 三個工具的下載(續傳、重試)、SHA-256 驗證、解壓到 `%LOCALAPPDATA%\youtube-to-your-format\bin\`;`--js-runtimes` 指向 Deno
-- [ ] 第一次準備畫面 + `tools-progress`
-- [ ] Verify: 單元測試(SHA2-256SUMS 解析、驗證、版本比較);手動：刪掉 `bin\` 後重開會重新準備，中途斷網可續傳;全程無 console 視窗
+- [x] `process.rs`:`CREATE_NO_WINDOW`、Job Object + `KILL_ON_JOB_CLOSE`、UTF-8、區分「不見了 / 被拒」
+- [x] ffmpeg:選定固定版本、確認含 ffprobe(removed from scope: 重新上傳到 `tools-ffmpeg-<版本>` → 改直接用 GyanD,見 Deviation)
+- [x] Deno:選定版本並確認符合 yt-dlp 最低需求
+- [x] 三個工具的下載(續傳、重試)、SHA-256 驗證、解壓到 `%LOCALAPPDATA%\youtube-to-your-formatin\`
+- [ ] `--js-runtimes` 指向 Deno(gap:要在 W04 組 yt-dlp 參數時加上，這裡只裝好 Deno)
+- [x] 第一次準備畫面 + `tools-progress`
+- [x] Verify: 單元測試(SHA2-256SUMS 解析、驗證；版本比較移到 W05);手動：刪掉 `bin\` 後重開會重新準備，中途斷網可續傳;全程無 console 視窗
+
+Evidence: PR #3。`npm run rs:test` 27 passed,涵蓋:
+- process:隱藏子行程的輸出、Missing 分類、防毒錯誤碼 5 / 225 / 226 判成 Blocked、kill_tree、卡住的子行程逾時後整組結束
+- 工具安裝:SHA2-256SUMS 解析、hash 錯就刪掉 `.part`、`.part` 以 hash 命名並清掉舊版本的、4xx 不重試、換檔保留 `.old` 與 rollback、zip 解壓與同名去重、`state.json` 原子寫入與損毀 fallback、`needed()` 判斷、錯誤代碼對應
+
+其他驗證:
+- `-- --ignored` 2 passed:真的把三個工具裝到 temp dir,並各自跑 `--version`(17.1s);先放 3 MB `.part` 再下載，第一筆進度 > 3 MB,證明 Range 續傳
+- `npm test` 5 passed
+- 手動：刪掉 `bin\` 後啟動 debug exe,顯示準備畫面(截圖),完成後顯示「準備好了」;`bin\` 只剩三個工具和 `state.json`,沒有殘留的暫存檔
+- 準備過程中列出所有有視窗的 process,沒有 yt-dlp / ffmpeg / deno / conhost
+- 第二次啟動時，第二個 process 會自己結束(single-instance)
+
+對抗性 review 修正：
+- 加 single-instance
+- 驗證工具時加 60s timeout
+- 子行程先 suspended,放進 Job Object 後才 resume
+- `SetErrorMode`,缺 DLL 時直接失敗，不跳出看不到的對話框
+- 新增錯誤代碼 github_busy / disk_full / 防毒錯誤碼
+- 改名遇到防毒鎖檔會重試
+- 驗證失敗就 rollback
+- `.part` 以 hash 命名
+- 檢查 `Content-Range` 的起點
+- 前端先註冊 listener 再開始準備
+
+L7(整體下載時限)沒修，寫進 vault backlog。
+Deviation:
+- ffmpeg 來源:原本把 BtbN build 重新上傳到自己 repo 的 release → 改成直接下載 GyanD/codexffmpeg 9.0.2 essentials 7z → BtbN gpl 版 zip 要 184 MB;GyanD 只有 34 MB,而且從 2020 年起每個有版本號的 release 都還在 → hash 對過 gyan.dev 公布的 `.sha256`。
+- 版本比較:原本放在 W02 → 移到 W05 → 只有 yt-dlp 更新會用到。
+- 「中途斷網」:原本手動拔網路測 → 改用強制結束 app 再重開，加上 Range 續傳的整合測試 → 兩者都會留下 `.part`,走的是同一條路徑。
+- 架構:原本把 `process.rs`、`tools/` 放在 `src-tauri/src/` → 改放進新的 workspace crate `ytf-core`,Tauri crate 設 `test = false` → 連結 Tauri 的測試執行檔一跑就 `STATUS_ENTRYPOINT_NOT_FOUND` → design / CLAUDE.md 已同步更新。
 
 ## W03 — 查詢與主畫面卡片(`lookup`)
 
@@ -43,6 +74,7 @@ Deviation: 驗證視窗原本用 `npm run tauri dev` → 改用 `npm run rs:buil
 
 - [ ] 一次一個的 worker、`job-updated` 整個快照
 - [ ] 進度 JSON(兩條 stream 合併)、`processing` 不定進度
+- [ ] yt-dlp 一律帶 `--js-runtimes deno:<bin>\deno.exe`(W02 留下的缺口)
 - [ ] 唯一檔名、`-o`、`--no-overwrites --trim-filenames`、`--print after_move:filepath`
 - [ ] 影片格式選擇器 + ffprobe 檢查，非 H.264 才轉;音樂 mp3 + metadata;`cookies.txt`
 - [ ] 取消：結束 Job Object + 清暫存檔
@@ -51,6 +83,7 @@ Deviation: 驗證視窗原本用 `npm run tauri dev` → 改用 `npm run rs:buil
 ## W05 — 錯誤分類與自動修復
 
 - [ ] 錯誤代碼分類(design 表中全部代碼),前端白話文案
+- [ ] yt-dlp 版本比較(stable / nightly 格式),從 W02 移過來
 - [ ] yt-dlp 更新：一天一次背景檢查、換檔前取 queue 鎖、`.new` → `.old` 換檔、rollback
 - [ ] `extractor` 自動流程:stable → nightly → 「過一兩天再試」
 - [ ] `copy_diagnostics`、log 輪替、啟動時記錄工具版本與 hash
