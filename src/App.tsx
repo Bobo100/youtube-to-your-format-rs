@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { onToolsProgress, prepareTools, type ToolsProgress } from "./api";
 import { t } from "./i18n";
+import { Home } from "./screens/Home";
 import { Preparing } from "./screens/Preparing";
 import "./styles.css";
 
@@ -50,7 +51,8 @@ export default function App() {
         {phase === "preparing" ? (
           <Preparing progress={progress} error={error} onRetry={retry} />
         ) : (
-          <p className="big">{t("readyPlaceholder")}</p>
+          // Save buttons stay disabled until the download queue lands (W04).
+          <Home />
         )}
       </main>
     </div>
