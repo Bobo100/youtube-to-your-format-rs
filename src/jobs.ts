@@ -15,7 +15,7 @@ export function latestJobFor(jobs: Job[], videoId: string): Job | undefined {
 }
 
 export function isActive(job: Job): boolean {
-  return job.state === "queued" || job.state === "downloading" || job.state === "processing";
+  return job.state === "queued" || job.state === "downloading" || job.state === "processing" || job.state === "updating";
 }
 
 /** Jobs that no card on screen is showing (a card shows only its newest job). */
@@ -38,6 +38,8 @@ export function jobStatusText(job: Job): string {
       return t("jobDownloading", { what, percent: Math.round((job.progress ?? 0) * 100) });
     case "processing":
       return t("jobProcessing");
+    case "updating":
+      return t("jobUpdating");
     case "done":
       return t("jobDone");
     case "canceled":

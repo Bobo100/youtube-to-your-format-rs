@@ -4,7 +4,9 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::Value;
 
-use super::{base_args, is_network_failure, Input};
+use super::errors::{classify, YtError};
+use super::{base_args, Input};
+use crate::tools::update::NeedsNewYtdlp;
 use crate::process::{self, SpawnError};
 use crate::tools::ToolPaths;
 
@@ -61,18 +63,26 @@ pub enum LookupError {
 }
 
 impl LookupError {
-    /// Coarse mapping until W05's full yt-dlp error classifier lands.
     pub fn code(&self, searching: bool) -> &'static str {
+        let broken = if searching { "search_failed" } else { "lookup_failed" };
         match self {
             Self::Spawn(SpawnError::Blocked(_)) => "tool_blocked",
             Self::Spawn(SpawnError::Missing(_)) => "tools_missing",
             Self::Spawn(SpawnError::TimedOut(_)) => "network",
-            Self::Failed { stderr } if is_network_failure(stderr) => "network",
+            Self::Failed { stderr } => match classify(stderr) {
+                YtError::Extractor | YtError::NotFound => broken,
+                other => other.code(),
+            },
             Self::Unavailable => "unavailable",
             Self::NotYoutube => "not_youtube",
-            _ if searching => "search_failed",
-            _ => "lookup_failed",
+            _ => broken,
         }
+    }
+}
+
+impl NeedsNewYtdlp for LookupError {
+    fn needs_new_ytdlp(&self) -> bool {
+        matches!(self, Self::Failed { stderr } if classify(stderr).may_be_fixed_by_update())
     }
 }
 

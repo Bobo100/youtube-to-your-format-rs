@@ -22,6 +22,8 @@ pub enum JobState {
     Queued,
     Downloading,
     Processing,
+    /// yt-dlp is being updated after a failure that looked like a YouTube change.
+    Updating,
     Done,
     Failed,
     Canceled,
@@ -29,7 +31,7 @@ pub enum JobState {
 
 impl JobState {
     pub fn is_active(self) -> bool {
-        matches!(self, Self::Queued | Self::Downloading | Self::Processing)
+        matches!(self, Self::Queued | Self::Downloading | Self::Processing | Self::Updating)
     }
 }
 
@@ -62,11 +64,13 @@ pub struct Request {
 pub enum RunUpdate {
     Progress(f64),
     Processing,
+    Updating,
 }
 
 pub enum RunOutcome {
     Done(PathBuf),
-    Failed(&'static str),
+    /// `detail` (yt-dlp's stderr tail) is kept for diagnostics, never shown in the UI.
+    Failed { code: &'static str, detail: String },
     Canceled,
 }
 
@@ -87,6 +91,7 @@ type Emit = dyn Fn(&Job) + Send + Sync;
 struct Inner {
     jobs: Mutex<Vec<Job>>,
     cancels: Mutex<HashMap<JobId, CancellationToken>>,
+    details: Mutex<HashMap<JobId, String>>,
     next_id: AtomicU64,
     tx: mpsc::UnboundedSender<JobId>,
     emit: Box<Emit>,
@@ -107,6 +112,7 @@ impl Queue {
         let inner = Arc::new(Inner {
             jobs: Mutex::new(Vec::new()),
             cancels: Mutex::new(HashMap::new()),
+            details: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(1),
             tx,
             emit: Box::new(emit),
@@ -170,6 +176,11 @@ impl Queue {
         });
     }
 
+    /// Technical details of a failed job, for "複製問題資訊".
+    pub fn detail(&self, id: JobId) -> Option<String> {
+        self.inner.details.lock().unwrap().get(&id).cloned()
+    }
+
     pub fn jobs(&self) -> Vec<Job> {
         self.inner.jobs.lock().unwrap().clone()
     }
@@ -227,9 +238,16 @@ async fn work(inner: Arc<Inner>, runner: Arc<dyn Runner>, mut rx: mpsc::Unbounde
                     job.state = JobState::Processing;
                     job.progress = None;
                 }
+                RunUpdate::Updating => {
+                    job.state = JobState::Updating;
+                    job.progress = None;
+                }
             });
         };
         let outcome = runner.run(&job, &token, &update).await;
+        if let RunOutcome::Failed { detail, .. } = &outcome {
+            inner.details.lock().unwrap().insert(id, detail.clone());
+        }
         inner.update_and_emit(id, |job| {
             job.progress = None;
             match outcome {
@@ -237,7 +255,7 @@ async fn work(inner: Arc<Inner>, runner: Arc<dyn Runner>, mut rx: mpsc::Unbounde
                     job.state = JobState::Done;
                     job.output_path = Some(path.display().to_string());
                 }
-                RunOutcome::Failed(code) => {
+                RunOutcome::Failed { code, .. } => {
                     job.state = JobState::Failed;
                     job.error = Some(code.to_owned());
                 }
@@ -270,7 +288,7 @@ mod tests {
                     _ = tokio::time::sleep(Duration::from_millis(50)) => {}
                 }
                 if job.title.starts_with("fail") {
-                    return RunOutcome::Failed("download_failed");
+                    return RunOutcome::Failed { code: "extractor", detail: "ERROR: boom".into() };
                 }
                 update(RunUpdate::Processing);
                 RunOutcome::Done(PathBuf::from(format!(r"C:\out\{}.mp3", job.title)))
@@ -376,7 +394,8 @@ mod tests {
         queue.enqueue(vec![request("fail-1"), request("ok")], false);
         settle(&queue).await;
         let jobs = queue.jobs();
-        assert_eq!((jobs[0].state, jobs[0].error.as_deref()), (JobState::Failed, Some("download_failed")));
+        assert_eq!((jobs[0].state, jobs[0].error.as_deref()), (JobState::Failed, Some("extractor")));
+        assert_eq!(queue.detail(jobs[0].id).as_deref(), Some("ERROR: boom"));
         assert_eq!(jobs[1].state, JobState::Done);
     }
 }

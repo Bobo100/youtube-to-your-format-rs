@@ -124,12 +124,55 @@ Deviation:
 
 ## W05 — 錯誤分類與自動修復
 
-- [ ] 錯誤代碼分類(design 表中全部代碼),前端白話文案
-- [ ] yt-dlp 版本比較(stable / nightly 格式),從 W02 移過來
-- [ ] yt-dlp 更新：一天一次背景檢查、換檔前取 queue 鎖、`.new` → `.old` 換檔、rollback
-- [ ] `extractor` 自動流程:stable → nightly → 「過一兩天再試」
-- [ ] `copy_diagnostics`、log 輪替、啟動時記錄工具版本與 hash
-- [ ] Verify: 每個代碼都有真實 stderr fixture 的單元測試;換檔 / rollback 測試;手動放舊版 yt-dlp 觸發自動更新後重試
+- [x] 錯誤代碼分類(design 表中全部代碼),前端白話文案
+- [x] yt-dlp 版本比較(stable / nightly 格式),從 W02 移過來
+- [x] yt-dlp 更新：一天一次背景檢查、換檔前取 queue 鎖、`.new` → `.old` 換檔
+- [ ] rollback 到上一版(removed from scope: 見 Deviation)
+- [x] `extractor` 自動流程:stable → nightly → 「過一兩天再試」
+- [x] `copy_diagnostics`、log 輪替、啟動時記錄工具版本與 hash
+- [x] Verify: 每個代碼都有真實 stderr fixture 的單元測試;換檔 / rollback 測試;手動放舊版 yt-dlp 觸發自動更新後重試
+
+Evidence: PR #6。`npm run rs:test` 79 passed,新增：
+- `ytdlp::errors`:真實 stderr 的分類
+  - 私人影片、無法播放、格式不存在、年齡限制
+  - 走 proxy 連不上(WinError 10061)
+  - 舊版 yt-dlp 的「The page needs to be reloaded.」
+  - 不存在的 handle(HTTP 404)
+  - 從 issue 抄來的 bot check / 429 / Errno 28
+- 版本比較
+- 修復流程(用寫好劇本的假 update):不需要更新就不試；stable 修好就停；沒有新的 stable 就試 nightly;更新失敗時不重試下載
+- 冷卻與暫停：同一個 channel 30 分鐘內不重查;403 / 429 後整體暫停一小時；每日檢查 24 小時內跳過
+- 錯誤分類補上：清單 / 頻道不存在(NotFound)、本機存檔被擋(LocalIo,不觸發更新)、「content isn’t available, try again later」(BotCheck)
+- log:UTC 時間格式、輪替最多留 5 個檔
+
+`-- --ignored` 9 passed,新增：
+- 用真的舊版 yt-dlp 2025.01.15 下載「Me at the zoo」:失敗 → 狀態變成 Updating → 自動更新到 stable → 重試成功；`state.json` 版本已更新
+- 真的 stable 更新：第一次會裝，再查一次會說已是最新，每日檢查會跳過
+
+`npm test` 11 passed。
+
+缺口:「複製問題資訊」按鈕沒有在 UI 上實際按過(下載層的失敗在 UI 很難故意製造),只有 build 和型別檢查;留給 W09 的手動 QA。
+
+Deviation:
+- `format_unavailable` 原本設計成**不**觸發更新 → 改成也會先試更新 → YouTube 改版常見的症狀之一就是「Requested format is not available」(只給 SABR 串流)→ `errors` 單元測試。
+- 新增錯誤代碼 `NotFound`(HTTP 404、網址格式錯誤)→ 這類錯誤原本會落到 `extractor`,讓打錯的網址也去觸發 yt-dlp 更新。
+- 「新版 yt-dlp 有 regression 就 rollback 到上一版」removed from scope → stable 很少出 regression,而且修復流程本來就會再試 nightly;再加 rollback 需要記住多個舊版本、判斷哪一版「比較好」,複雜度不划算 → 更新後驗證不過時的 rollback(`verify_or_rollback`)仍然保留。
+- 「換檔前取 queue 鎖」實作成 `Updater` 的兩把鎖：
+  - 讀寫鎖：跑 yt-dlp 時拿讀鎖；只在換資料夾和驗證那一下拿寫鎖，下載和解壓都在鎖外做
+  - `files` 鎖：`prepare` 和 updater 共用，`bin\` 與 `state.json` 只有一個人在寫
+
+對抗性 review 修正：
+- 寫鎖範圍縮小
+- 更新冷卻與限流暫停；驗證不過的版本不再重裝
+- 失敗後版本已被換過時，直接用新版重試
+- prepare 與 updater 共用 `files` 鎖
+- 更新中可以取消
+- 搜尋時也顯示「正在更新下載工具」
+- 每 6 小時重跑一次每日檢查
+- 全新安裝時記錄檢查時間
+- log 輪替在檔案被鎖住時不會洗掉歷史
+- 重試的新下載不沿用舊的「已複製」狀態；複製失敗會顯示提示
+- 新增本機存檔被擋的文案
 
 ## W06 — 轉檔(`convert`)
 

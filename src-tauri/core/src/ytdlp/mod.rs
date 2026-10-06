@@ -2,6 +2,7 @@
 //! JS runtime and UTF-8 output are never forgotten.
 
 pub mod download;
+pub mod errors;
 pub mod input;
 pub mod lookup;
 pub mod progress;

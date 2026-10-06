@@ -47,6 +47,7 @@ describe("jobs", () => {
     expect(jobStatusText(job({ state: "downloading", progress: 0.637 }))).toBe("正在下載音樂… 64%");
     expect(jobStatusText(job({ state: "downloading", format: "video", progress: 0 }))).toBe("正在下載影片… 0%");
     expect(jobStatusText(job({ state: "processing" }))).toBe("快好了，正在處理…");
+    expect(jobStatusText(job({ state: "updating" }))).toContain("正在更新下載工具");
     expect(jobStateText(job({ state: "downloading", progress: 0.5 }))).toBe("正在下載音樂");
   });
 });

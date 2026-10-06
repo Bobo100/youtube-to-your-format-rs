@@ -1,17 +1,21 @@
 //! The real queue runner: yt-dlp download, then make sure a video is H.264.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
 
 use crate::media::{self, MediaError};
 use crate::naming::{sanitize, unique_base};
 use crate::queue::{Job, RunFuture, RunOutcome, RunUpdate, Runner, SaveFormat};
+use crate::applog;
+use crate::tools::update::Updater;
 use crate::tools::{retry_io, ToolPaths};
 use crate::ytdlp::download::{run_download, DownloadError, Update};
 
 pub struct YtDlpRunner {
     pub paths: ToolPaths,
+    pub updater: Arc<Updater>,
     pub output_dir: Box<dyn Fn() -> PathBuf + Send + Sync>,
 }
 
@@ -29,8 +33,9 @@ impl Runner for YtDlpRunner {
             }
             let dir = (self.output_dir)();
             if let Err(err) = tokio::fs::create_dir_all(&dir).await {
-                eprintln!("cannot create {}: {err}", dir.display());
-                return RunOutcome::Failed(DownloadError::Io(err).code());
+                applog!("cannot create {}: {err}", dir.display());
+                let err = DownloadError::Io(err);
+                return RunOutcome::Failed { code: err.code(), detail: err.detail() };
             }
             let base = unique_base(&dir, &sanitize(&job.title));
             let outcome = self.download(job, &dir, &base, cancel, update).await;
@@ -55,12 +60,25 @@ impl YtDlpRunner {
             Update::Progress(p) => update(RunUpdate::Progress(p)),
             Update::Processing => update(RunUpdate::Processing),
         };
-        let path = match run_download(&self.paths, &job.url, job.format, dir, base, cancel, &forward).await {
+        let attempt = || async {
+            let _running = self.updater.running().await;
+            let result = run_download(&self.paths, &job.url, job.format, dir, base, cancel, &forward).await;
+            if result.is_err() {
+                // A retry after an update reuses the same name; start clean.
+                remove_job_files(dir, base).await;
+            }
+            result
+        };
+        let result = self.updater.with_repair(attempt, &|| update(RunUpdate::Updating), Some(cancel)).await;
+        if cancel.is_cancelled() {
+            return RunOutcome::Canceled;
+        }
+        let path = match result {
             Ok(path) => path,
             Err(DownloadError::Canceled) => return RunOutcome::Canceled,
             Err(err) => {
-                eprintln!("download {} failed: {err}", job.url);
-                return RunOutcome::Failed(err.code());
+                applog!("download {} failed: {}", job.url, err.code());
+                return RunOutcome::Failed { code: err.code(), detail: err.detail() };
             }
         };
         if job.format != SaveFormat::Video {
@@ -75,13 +93,13 @@ impl YtDlpRunner {
                 Ok(converted) => RunOutcome::Done(converted),
                 Err(MediaError::Canceled) => RunOutcome::Canceled,
                 Err(err) => {
-                    eprintln!("converting {} failed: {err}", path.display());
-                    RunOutcome::Failed(media_code(&err))
+                    applog!("converting {} failed: {err}", path.display());
+                    RunOutcome::Failed { code: media_code(&err), detail: err.to_string() }
                 }
             },
             // The file is already downloaded and usually H.264 anyway: keep it.
             Err(err) => {
-                eprintln!("ffprobe on {} failed, keeping the file: {err}", path.display());
+                applog!("ffprobe on {} failed, keeping the file: {err}", path.display());
                 RunOutcome::Done(path)
             }
         }
@@ -91,7 +109,7 @@ impl YtDlpRunner {
 fn media_code(err: &MediaError) -> &'static str {
     match err {
         MediaError::Io(e) => DownloadError::Io(std::io::Error::new(e.kind(), e.to_string())).code(),
-        _ => "download_failed",
+        _ => "extractor",
     }
 }
 
@@ -136,8 +154,10 @@ mod tests {
     }
 
     fn real_queue(dir: PathBuf) -> (Queue, Arc<Mutex<Vec<Job>>>) {
+        let paths = ToolPaths::from_env().unwrap();
         let runner = YtDlpRunner {
-            paths: ToolPaths::from_env().unwrap(),
+            updater: Updater::new(paths.clone(), crate::tools::http_client().unwrap()),
+            paths,
             output_dir: Box::new(move || dir.clone()),
         };
         let events = Arc::new(Mutex::new(Vec::new()));

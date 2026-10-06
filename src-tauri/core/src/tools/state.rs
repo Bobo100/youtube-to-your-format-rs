@@ -9,6 +9,9 @@ pub struct ToolState {
     pub ytdlp: Option<String>,
     pub ffmpeg: Option<String>,
     pub deno: Option<String>,
+    /// Unix seconds of the last look at yt-dlp's latest release.
+    #[serde(default)]
+    pub ytdlp_checked_at: Option<u64>,
 }
 
 impl ToolState {
@@ -52,6 +55,7 @@ mod tests {
             ytdlp: Some("2026.08.19".into()),
             ffmpeg: Some("9.0.2".into()),
             deno: None,
+            ytdlp_checked_at: Some(1),
         };
         state.save(&path).unwrap();
         assert_eq!(ToolState::load(&path), state);

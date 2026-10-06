@@ -124,7 +124,7 @@ yt-dlp 一律帶 `--js-runtimes deno:<bin 路徑>\deno.exe`,不依賴系統 PATH
 2. 下載 `yt-dlp_win.zip` 與同一個 release 的 `SHA2-256SUMS`,比對通過才解壓到 `bin\yt-dlp.new\`
 3. 換檔前先取得 queue 的鎖,確保沒有 yt-dlp 正在執行。原因:Windows 不能覆蓋執行中的 exe
 4. 換資料夾順序:`yt-dlp.new\` 解壓完成 → 現有的 rename 成 `yt-dlp.old\` → `.new` rename 成 `yt-dlp\`。中途斷電也不會留下壞的版本
-5. 保留 `.old`。如果新版本身有 regression(例如換版後連第一個下載都失敗、舊版卻成功),就 rollback
+5. 保留 `.old`:新版裝好後跑 `--version` 驗證不過，就 rollback
 6. `extractor` 錯誤的自動流程(見「錯誤處理」)會**強制**檢查,不受一天一次的限制
 
 **已知風險**:同來源的 checksum 只能防傳輸損毀。一旦 yt-dlp 的 GitHub 帳號被盜,攻擊者就能在家人電腦上執行任意程式,而且不需要使用者做任何事。yt-dlp 另外有 GPG 簽章 `SHA2-256SUMS.sig`。第一版不驗,把「驗 GPG 簽章」列進 backlog。
@@ -198,7 +198,7 @@ yt-dlp 一律帶 `--js-runtimes deno:<bin 路徑>\deno.exe`,不依賴系統 PATH
 | `unavailable` | 影片已刪除、私人、地區限制 | 「這部影片無法下載」 |
 | `bot_check` | "Sign in to confirm you're not a bot" 之類 | 「YouTube 暫時擋住了,請過一陣子再試」。**不觸發**更新流程,也不叫長輩弄 cookies |
 | `login_required` | 會員限定、年齡限制 | 「這部影片要登入才能下載」 |
-| `format_unavailable` | "Requested format is not available" | 「這部影片沒有可下載的版本」。**不觸發**更新流程 |
+| `format_unavailable` | "Requested format is not available" | 先跑和 `extractor` 一樣的自動更新流程(YouTube 改版常見的症狀);還是失敗才顯示「這部影片沒有可以下載的版本」 |
 | `disk_full` | 寫檔失敗且空間不足 | 「電腦空間不夠了」 |
 | `tool_blocked` | spawn 時存取被拒,或工具檔案不見了(多半是防毒隔離) | 「下載工具被防毒軟體擋住了」+「複製問題資訊(傳給 Bobo)」+「重新準備」 |
 | `tools_missing` | 第一次準備失敗 | 「準備失敗」+ 再試一次(續傳);不讓家人卡在半殘狀態 |

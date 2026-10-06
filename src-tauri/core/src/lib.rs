@@ -2,6 +2,7 @@
 //! Windows app manifest that Tauri-linked test binaries need.
 
 pub mod folders;
+pub mod log;
 pub mod media;
 pub mod naming;
 pub mod process;

@@ -7,6 +7,8 @@ mod install;
 mod manifest;
 mod release;
 mod state;
+pub mod update;
+pub mod version;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -19,6 +21,7 @@ use crate::process::{self, SpawnError};
 use download::with_retry;
 use install::{extract_7z, extract_zip, extract_zip_tree, new_path, replace_with_new, rollback};
 pub(crate) use install::retry_io;
+pub use checksum::sha256_file;
 use manifest::{Pinned, DENO, FFMPEG};
 use state::ToolState;
 
@@ -161,9 +164,14 @@ fn needed(paths: &ToolPaths, state: &ToolState) -> Vec<Tool> {
     tools
 }
 
+/// True when `prepare` has something to install (so it needs the write gate).
+pub fn needs_install(paths: &ToolPaths) -> bool {
+    !needed(paths, &ToolState::load(&paths.state())).is_empty()
+}
+
 /// Makes sure all three tools are installed; only downloads what is missing.
-/// Callers must not run two of these at once (the app is single-instance and
-/// serializes calls); files in `bin/` are not locked against other processes.
+/// The caller holds `Updater::files()` (one owner for `bin/` and state.json)
+/// and, when `needs_install`, the write gate so no tool is running.
 pub async fn prepare(
     paths: &ToolPaths,
     client: &Client,
@@ -180,8 +188,10 @@ pub async fn prepare(
         };
         match tool {
             Tool::Ytdlp => {
-                let version = install_ytdlp(paths, client, &report).await?;
-                verify_or_rollback(&[(paths.ytdlp(), "--version", paths.ytdlp_dir())]).await?;
+                let release = with_retry(|| ytdlp_release(client, manifest::YTDLP_STABLE_REPO)).await?;
+                let version = stage_ytdlp(paths, client, &release, &report).await?;
+                swap_ytdlp(paths).await?;
+                state.ytdlp_checked_at = Some(update::unix_now());
                 // Earlier builds installed the onefile exe directly in bin/.
                 let _ = tokio::fs::remove_file(paths.bin.join("yt-dlp.exe")).await;
                 state.ytdlp = Some(version);
@@ -227,17 +237,19 @@ async fn replace_all(targets: Vec<PathBuf>) -> Result<(), ToolError> {
         .map_err(ToolError::from)
 }
 
-async fn install_ytdlp(paths: &ToolPaths, client: &Client, report: &Report<'_>) -> Result<String, ToolError> {
-    let release = with_retry(|| {
-        release::latest(
-            client,
-            manifest::YTDLP_STABLE_REPO,
-            manifest::YTDLP_ASSET,
-            manifest::YTDLP_SUMS_ASSET,
-        )
-    })
-    .await?;
-    let sha256 = with_retry(|| release::expected_sha256(client, &release, manifest::YTDLP_ASSET)).await?;
+async fn ytdlp_release(client: &Client, repo: &str) -> Result<release::Release, ToolError> {
+    release::latest(client, repo, manifest::YTDLP_ASSET, manifest::YTDLP_SUMS_ASSET).await
+}
+
+/// Downloads the onedir build, checks its hash and unpacks it to `yt-dlp.new\`.
+/// Safe while yt-dlp runs: nothing in use is touched until `swap_ytdlp`.
+async fn stage_ytdlp(
+    paths: &ToolPaths,
+    client: &Client,
+    release: &release::Release,
+    report: &Report<'_>,
+) -> Result<String, ToolError> {
+    let sha256 = with_retry(|| release::expected_sha256(client, release, manifest::YTDLP_ASSET)).await?;
     let archive = paths.bin.join(manifest::YTDLP_ASSET);
     let last = AtomicU64::new(0);
     download::download_verified(client, &release.exe_url, &archive, &sha256, &throttled(report, &last)).await?;
@@ -250,9 +262,15 @@ async fn install_ytdlp(paths: &ToolPaths, client: &Client, report: &Report<'_>) 
     if !new_path(&paths.ytdlp_dir()).join("yt-dlp.exe").is_file() {
         return Err(ToolError::Archive(format!("{}: no yt-dlp.exe among {files} files", manifest::YTDLP_ASSET)));
     }
-    replace_all(vec![paths.ytdlp_dir()]).await?;
     let _ = tokio::fs::remove_file(&archive).await;
-    Ok(release.version)
+    Ok(release.version.clone())
+}
+
+/// Puts the staged build in place and checks it runs, rolling back if not.
+/// No yt-dlp may be running: hold the updater's write gate.
+async fn swap_ytdlp(paths: &ToolPaths) -> Result<(), ToolError> {
+    replace_all(vec![paths.ytdlp_dir()]).await?;
+    verify_or_rollback(&[(paths.ytdlp(), "--version", paths.ytdlp_dir())]).await
 }
 
 async fn install_pinned(
@@ -351,6 +369,7 @@ mod tests {
             ytdlp: Some("2026.08.19".into()),
             ffmpeg: Some(FFMPEG.version.into()),
             deno: Some(DENO.version.into()),
+            ytdlp_checked_at: None,
         };
         assert!(needed(&paths, &state).is_empty());
 
@@ -369,6 +388,7 @@ mod tests {
             ytdlp: Some("2026.08.19".into()),
             ffmpeg: Some(FFMPEG.version.into()),
             deno: Some(DENO.version.into()),
+            ytdlp_checked_at: None,
         };
         assert_eq!(needed(&paths, &state), vec![Tool::Ffmpeg]);
     }
