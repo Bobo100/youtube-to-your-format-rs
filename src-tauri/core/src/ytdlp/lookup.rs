@@ -4,7 +4,7 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::Value;
 
-use super::{base_args, Input};
+use super::{base_args, is_network_failure, Input};
 use crate::process::{self, SpawnError};
 use crate::tools::ToolPaths;
 
@@ -74,25 +74,6 @@ impl LookupError {
             _ => "lookup_failed",
         }
     }
-}
-
-fn is_network_failure(stderr: &str) -> bool {
-    // "Unable to download …: HTTP Error 404" is a wrong link, not a dead network.
-    if stderr.contains("HTTP Error 4") {
-        return false;
-    }
-    [
-        "getaddrinfo",
-        "WinError 10060",
-        "WinError 10061",
-        "WinError 10065",
-        "timed out",
-        "Connection reset",
-        "Connection refused",
-        "Unable to download",
-    ]
-    .iter()
-    .any(|needle| stderr.contains(needle))
 }
 
 pub fn lookup_args(paths: &ToolPaths, input: &Input, whole_playlist: bool) -> Vec<OsString> {

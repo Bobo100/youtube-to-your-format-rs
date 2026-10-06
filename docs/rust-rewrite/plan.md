@@ -88,13 +88,33 @@ Deviation:網址 / 關鍵字判斷原本打算在前端用 Vitest 測 → 改由
 
 ## W04 — 下載排隊與進度(`queue`、`ytdlp`)
 
-- [ ] 一次一個的 worker、`job-updated` 整個快照
-- [ ] 進度 JSON(兩條 stream 合併)、`processing` 不定進度
+- [x] 一次一個的 worker、`job-updated` 整個快照
+- [x] 進度 JSON(兩條 stream 合併)、`processing` 不定進度
 - [x] yt-dlp 一律帶 `--js-runtimes deno:<bin>\deno.exe`(W02 留下的缺口)— 已在 W03 用 `ytdlp::base_args` 做好,PR #4 的單元測試涵蓋
-- [ ] 唯一檔名、`-o`、`--no-overwrites --trim-filenames`、`--print after_move:filepath`
-- [ ] 影片格式選擇器 + ffprobe 檢查，非 H.264 才轉;音樂 mp3 + metadata;`cookies.txt`
-- [ ] 取消：結束 Job Object + 清暫存檔
-- [ ] Verify: 進度解析與檔名單元測試(真實輸出 fixture);`cargo test -- --ignored` 下載短 CC 影片音樂 / 影片各一次;手動取消後無殘檔
+- [x] 唯一檔名、`-o`、`--no-overwrites`、`--print after_move:filepath`(`--trim-filenames` 改成自己截到 120 字，見 Deviation)
+- [x] 影片格式選擇器 + ffprobe 檢查，非 H.264 才轉;音樂 mp3 + metadata;`cookies.txt`
+- [x] 取消：結束 Job Object + 清暫存檔
+- [x] Verify: 進度解析與檔名單元測試(真實輸出 fixture);`cargo test -- --ignored` 下載短 CC 影片音樂 / 影片各一次;手動取消後無殘檔
+
+Evidence: PR #5。`npm run rs:test` 62 passed,新增：
+- naming:Windows 不允許的字元、保留名稱、長標題、`(2)` 判斷不分大小寫、`%` 跳脫
+- 進度：兩條 stream 合成一條、處理階段、estimate fallback、最終路徑
+- 下載參數：音樂 / 影片 / cookies
+- 錯誤代碼:format_unavailable、network
+- queue(用假的 runner 測):依序一次一個、取消排隊中的不會執行、取消執行中的不影響下一個、失敗帶錯誤碼且不擋後面的
+- 清檔只刪這個下載的檔案
+
+`-- --ignored` 4 passed:
+- 真的下載「Me at the zoo」音樂 + 影片：輸出 mp3 和 mp4,影片是 h264,資料夾只剩這兩個檔
+- 下載長片到一半取消：狀態 Canceled,資料夾是空的
+- ffmpeg 產生的 VP9 會轉成 H.264,暫存檔已清掉
+
+`npm test` 9 passed。手動用 debug exe 貼網址，按「存成音樂」:下載中顯示進度條、「快好了，正在處理…」和取消按鈕；完成後顯示「好了！已存到『下載 › YouTube』」和打開資料夾(兩張截圖)。測試產生的檔案已刪除。
+
+Deviation:
+- 檔名長度：原本用 `--trim-filenames 150` → 改由 `naming::sanitize` 自己截到 120 字 → 我們是給 yt-dlp 已經組好的檔名，自己截比較確定 → naming 單元測試。
+- 同一首先存音樂再存影片時，影片會叫 `歌 (2).mp4` → 每個下載的檔名開頭必須獨一無二，取消時才能安全刪掉所有以它開頭的檔案 → runner 整合測試。
+- 「打開資料夾」:原本前端直接呼叫 opener → 改成 Rust 的 `open_folder(job_id)` → 只能打開這個 app 產生的檔案，不開放任意路徑。
 
 ## W05 — 錯誤分類與自動修復
 

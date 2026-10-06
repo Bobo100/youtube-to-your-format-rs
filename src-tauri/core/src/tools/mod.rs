@@ -98,6 +98,7 @@ pub struct ToolsProgress {
     pub total: Option<u64>,
 }
 
+#[derive(Debug, Clone)]
 pub struct ToolPaths {
     pub bin: PathBuf,
 }

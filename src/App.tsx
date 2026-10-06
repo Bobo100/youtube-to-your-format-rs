@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { onToolsProgress, prepareTools, type ToolsProgress } from "./api";
+import {
+  enqueue,
+  onJobUpdated,
+  onToolsProgress,
+  prepareTools,
+  type Job,
+  type SaveFormat,
+  type ToolsProgress,
+  type VideoCard,
+} from "./api";
+import { upsertJob } from "./jobs";
 import { t } from "./i18n";
 import { Home } from "./screens/Home";
 import { Preparing } from "./screens/Preparing";
@@ -11,6 +21,24 @@ export default function App() {
   const [phase, setPhase] = useState<Phase>("preparing");
   const [progress, setProgress] = useState<ToolsProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [jobs, setJobs] = useState<Job[]>([]);
+
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+    onJobUpdated((job) => setJobs((current) => upsertJob(current, job))).then((unlisten) => {
+      if (cancelled) unlisten();
+      else stop = unlisten;
+    });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, []);
+
+  const save = (cards: VideoCard[], format: SaveFormat) => {
+    enqueue(cards, format).catch((err: unknown) => console.error("enqueue failed", err));
+  };
 
   const prepare = useCallback(() => {
     prepareTools()
@@ -51,8 +79,7 @@ export default function App() {
         {phase === "preparing" ? (
           <Preparing progress={progress} error={error} onRetry={retry} />
         ) : (
-          // Save buttons stay disabled until the download queue lands (W04).
-          <Home />
+          <Home jobs={jobs} onSave={save} />
         )}
       </main>
     </div>

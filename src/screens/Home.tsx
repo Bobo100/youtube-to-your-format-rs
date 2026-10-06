@@ -1,12 +1,14 @@
 import { useState, type FormEvent } from "react";
-import { lookup, type Lookup, type SaveFormat, type VideoCard } from "../api";
+import { lookup, type Job, type Lookup, type SaveFormat, type VideoCard } from "../api";
+import { OtherJobs } from "../components/OtherJobs";
 import { VideoCardView } from "../components/VideoCardView";
 import { errorMessage, t } from "../i18n";
 import { ListIcon, MusicIcon, SearchIcon } from "../icons";
+import { latestJobFor } from "../jobs";
 
 type Props = {
-  /** Undefined until saving is wired up: the save buttons render disabled. */
-  onSave?: (cards: VideoCard[], format: SaveFormat) => void;
+  jobs: Job[];
+  onSave: (cards: VideoCard[], format: SaveFormat) => void;
 };
 
 type State =
@@ -15,7 +17,7 @@ type State =
   | { status: "done"; query: string; result: Lookup }
   | { status: "error"; code: string };
 
-export function Home({ onSave }: Props) {
+export function Home({ jobs, onSave }: Props) {
   const [text, setText] = useState("");
   const [state, setState] = useState<State>({ status: "idle" });
   const loading = state.status === "loading";
@@ -77,10 +79,20 @@ export function Home({ onSave }: Props) {
       )}
 
       {state.status === "done" && (
-        <Results result={state.result} onSave={onSave} onWholePlaylist={() => run(state.query, true)} />
+        <Results result={state.result} jobs={jobs} onSave={onSave} onWholePlaylist={() => run(state.query, true)} />
       )}
+
+      <OtherJobs
+        jobs={offScreenJobs(jobs, state)}
+        onRetry={(job) => onSave([{ id: job.videoId, url: job.url, title: job.title, channel: null, durationS: null, thumbnail: "" }], job.format)}
+      />
     </>
   );
+}
+
+function offScreenJobs(jobs: Job[], state: State): Job[] {
+  const onScreen = new Set(state.status === "done" ? state.result.items.map((card) => card.id) : []);
+  return jobs.filter((job) => !onScreen.has(job.videoId)).reverse();
 }
 
 function announcement(state: State): string {
@@ -93,10 +105,12 @@ function announcement(state: State): string {
 
 function Results({
   result,
+  jobs,
   onSave,
   onWholePlaylist,
 }: {
   result: Lookup;
+  jobs: Job[];
   onSave: Props["onSave"];
   onWholePlaylist: () => void;
 }) {
@@ -119,7 +133,7 @@ function Results({
           </p>
           {result.truncated && <p className="help">{t("playlistTruncated", { count: result.items.length })}</p>}
           {skippedNote}
-          <button className="btn" disabled={!onSave} onClick={() => onSave?.(result.items, "audio")}>
+          <button className="btn" onClick={() => onSave(result.items, "audio")}>
             <MusicIcon />
             {t("saveAllAudio")}
           </button>
@@ -131,7 +145,8 @@ function Results({
         <VideoCardView
           key={`${index}-${card.id}`}
           card={card}
-          onSave={onSave && ((c, format) => onSave([c], format))}
+          job={latestJobFor(jobs, card.id)}
+          onSave={(c, format) => onSave([c], format)}
         />
       ))}
       {result.hasPlaylist && (

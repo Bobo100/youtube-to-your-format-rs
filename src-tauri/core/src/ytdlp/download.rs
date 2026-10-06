@@ -1,0 +1,227 @@
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
+
+use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio_util::sync::CancellationToken;
+
+use super::progress::{LineEvent, ProgressTracker, PATH_PREFIX, PROGRESS_PREFIX};
+use super::{base_args, is_network_failure};
+use crate::naming::escape_template;
+use crate::process::{self, SpawnError};
+use crate::tools::ToolPaths;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SaveFormat {
+    Audio,
+    Video,
+}
+
+impl SaveFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Audio => "mp3",
+            Self::Video => "mp4",
+        }
+    }
+
+    fn streams(self) -> usize {
+        match self {
+            Self::Audio => 1,
+            Self::Video => 2,
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DownloadError {
+    #[error("tool: {0}")]
+    Spawn(#[from] SpawnError),
+    #[error("yt-dlp failed: {stderr}")]
+    Failed { stderr: String },
+    #[error("canceled")]
+    Canceled,
+    #[error("io: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+impl DownloadError {
+    /// Coarse mapping until W05's full yt-dlp error classifier lands.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Spawn(SpawnError::Blocked(_)) => "tool_blocked",
+            Self::Spawn(SpawnError::Missing(_)) => "tools_missing",
+            Self::Failed { stderr } if stderr.contains("Requested format is not available") => {
+                "format_unavailable"
+            }
+            Self::Failed { stderr } if is_network_failure(stderr) => "network",
+            Self::Io(e) if e.kind() == std::io::ErrorKind::StorageFull => "disk_full",
+            Self::Canceled => "canceled",
+            _ => "download_failed",
+        }
+    }
+}
+
+/// `cookies.txt` exported from a browser, for videos that need a login.
+pub fn find_cookies() -> Option<PathBuf> {
+    let home = PathBuf::from(std::env::var_os("USERPROFILE")?);
+    [home.join("cookies.txt"), home.join(".config").join("yt-cookies").join("cookies.txt")]
+        .into_iter()
+        .find(|p| p.is_file())
+}
+
+pub fn download_args(
+    paths: &ToolPaths,
+    url: &str,
+    format: SaveFormat,
+    dir: &Path,
+    base: &str,
+    cookies: Option<&Path>,
+) -> Vec<OsString> {
+    let mut args = base_args(paths);
+    let template = dir.join(format!("{}.%(ext)s", escape_template(base)));
+    args.extend(
+        [
+            "--newline",
+            // --print implies --quiet; --progress keeps the progress lines coming.
+            "--progress",
+            "--progress-template",
+            &format!("download:{PROGRESS_PREFIX}%(progress)j"),
+            "--print",
+            &format!("after_move:{PATH_PREFIX}%(filepath)s"),
+            "--no-playlist",
+            "--no-overwrites",
+            "--embed-metadata",
+        ]
+        .map(OsString::from),
+    );
+    match format {
+        SaveFormat::Audio => args.extend(
+            ["-f", "ba/b", "-x", "--audio-format", "mp3", "--audio-quality", "0"].map(OsString::from),
+        ),
+        SaveFormat::Video => args.extend(
+            [
+                "-f",
+                // H.264 + AAC merges into an mp4 every Windows player and LINE can open.
+                "bv*[vcodec^=avc1][height<=1080]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b",
+                "--merge-output-format",
+                "mp4",
+            ]
+            .map(OsString::from),
+        ),
+    }
+    if let Some(cookies) = cookies {
+        args.extend([OsString::from("--cookies"), cookies.as_os_str().to_owned()]);
+    }
+    args.extend([OsString::from("-o"), template.into_os_string(), "--".into(), url.into()]);
+    args
+}
+
+pub enum Update {
+    Progress(f64),
+    Processing,
+}
+
+/// Runs yt-dlp for one item. Returns the file it produced.
+pub async fn run_download(
+    paths: &ToolPaths,
+    url: &str,
+    format: SaveFormat,
+    dir: &Path,
+    base: &str,
+    cancel: &CancellationToken,
+    on_update: &(dyn Fn(Update) + Send + Sync),
+) -> Result<PathBuf, DownloadError> {
+    let mut cmd = process::command(paths.ytdlp());
+    cmd.args(download_args(paths, url, format, dir, base, find_cookies().as_deref()))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut spawned = process::spawn(&mut cmd)?;
+    let stdout = spawned.child.stdout.take().expect("stdout is piped");
+    let mut stderr = spawned.child.stderr.take().expect("stderr is piped");
+    let stderr_task = tokio::spawn(async move {
+        let mut text = String::new();
+        let _ = stderr.read_to_string(&mut text).await;
+        text
+    });
+
+    let mut tracker = ProgressTracker::new(format.streams());
+    let mut final_path = None;
+    let mut lines = BufReader::new(stdout).lines();
+    let status = loop {
+        tokio::select! {
+            _ = cancel.cancelled() => {
+                spawned.kill_tree();
+                let _ = spawned.child.wait().await;
+                return Err(DownloadError::Canceled);
+            }
+            line = lines.next_line() => match line? {
+                Some(line) => match tracker.on_line(&line) {
+                    Some(LineEvent::Progress(p)) => on_update(Update::Progress(p)),
+                    Some(LineEvent::Processing) => on_update(Update::Processing),
+                    Some(LineEvent::FinalPath(p)) => final_path = Some(PathBuf::from(p)),
+                    None => {}
+                },
+                None => break spawned.child.wait().await?,
+            },
+        }
+    };
+    let stderr = stderr_task.await.unwrap_or_default();
+    match final_path {
+        Some(path) if status.success() && path.is_file() => Ok(path),
+        _ => Err(DownloadError::Failed { stderr }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn strings(args: Vec<OsString>) -> Vec<String> {
+        args.into_iter().map(|a| a.into_string().unwrap()).collect()
+    }
+
+    fn args(format: SaveFormat, cookies: Option<&Path>) -> Vec<String> {
+        let paths = ToolPaths { bin: PathBuf::from(r"C:\bin") };
+        strings(download_args(
+            &paths,
+            "https://youtu.be/abc",
+            format,
+            Path::new(r"C:\Users\a\Downloads\YouTube"),
+            "100% 好聽",
+            cookies,
+        ))
+    }
+
+    #[test]
+    fn audio_extracts_mp3_into_an_escaped_template() {
+        let a = args(SaveFormat::Audio, None);
+        assert!(a.windows(2).any(|w| w == ["--audio-format", "mp3"]));
+        assert!(a.windows(2).any(|w| w == ["--js-runtimes", r"deno:C:\bin\deno.exe"]));
+        assert!(a.contains(&"--no-overwrites".to_owned()) && a.contains(&"--no-playlist".to_owned()));
+        assert_eq!(
+            &a[a.len() - 4..],
+            ["-o", r"C:\Users\a\Downloads\YouTube\100%% 好聽.%(ext)s", "--", "https://youtu.be/abc"]
+        );
+        assert!(!a.contains(&"--cookies".to_owned()));
+    }
+
+    #[test]
+    fn video_prefers_h264_and_falls_back() {
+        let a = args(SaveFormat::Video, Some(Path::new(r"C:\Users\a\cookies.txt")));
+        let selector = &a[a.iter().position(|x| x == "-f").unwrap() + 1];
+        assert!(selector.starts_with("bv*[vcodec^=avc1]") && selector.ends_with("/b"));
+        assert!(a.windows(2).any(|w| w == ["--merge-output-format", "mp4"]));
+        assert!(a.windows(2).any(|w| w == ["--cookies", r"C:\Users\a\cookies.txt"]));
+    }
+
+    #[test]
+    fn format_and_network_failures_get_their_own_codes() {
+        let fail = |s: &str| DownloadError::Failed { stderr: s.into() }.code();
+        assert_eq!(fail("ERROR: [youtube] x: Requested format is not available"), "format_unavailable");
+        assert_eq!(fail("ERROR: Unable to download webpage: getaddrinfo failed"), "network");
+        assert_eq!(fail("ERROR: [youtube] x: Video unavailable"), "download_failed");
+    }
+}

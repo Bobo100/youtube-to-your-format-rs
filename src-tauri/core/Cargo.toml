@@ -16,9 +16,10 @@ futures-util = "0.3.34"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 sevenz-rust2 = { version = "0.23.0", default-features = false }
 url = "2.5.8"
+tokio-util = "0.7.19"
 
 [target."cfg(windows)".dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_Debug", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_Shell", "Win32_System_Com"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
