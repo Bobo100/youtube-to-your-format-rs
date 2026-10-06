@@ -1,5 +1,5 @@
 ---
-state: planned
+state: in-progress
 updated: 2026-10-07
 ---
 
@@ -15,11 +15,14 @@ updated: 2026-10-07
 
 ## W01 — 專案骨架與 CI
 
-- [ ] GitHub repo `Bobo100/youtube-to-your-format-rs`(public,同舊 repo)
-- [ ] Tauri 2 + Vite + React + TypeScript 骨架,app 名稱、identifier、視窗大小;NSIS currentUser 安裝
-- [ ] `CLAUDE.md`(架構心智模型、鐵則：子行程只走 `process.rs`、doc map、commit 格式、手動 QA 清單)+ `AGENTS.md` 指向 `CLAUDE.md`
-- [ ] Vitest、ESLint、`cargo test` / `clippy`;GitHub Actions Windows runner 在 PR 上跑
-- [ ] Verify: CI 綠燈;`npm run tauri dev` 開出空視窗
+- [x] GitHub repo `Bobo100/youtube-to-your-format-rs`(public,同舊 repo)
+- [x] Tauri 2 + Vite + React + TypeScript 骨架,app 名稱、identifier、視窗大小;NSIS currentUser 安裝
+- [x] `CLAUDE.md`(架構心智模型、鐵則：子行程只走 `process.rs`、doc map、commit 格式、手動 QA 清單)+ `AGENTS.md` 指向 `CLAUDE.md`
+- [x] Vitest、ESLint、`cargo test` / `clippy`;GitHub Actions Windows runner 在 PR 上跑
+- [x] Verify: CI 綠燈;`npm run tauri dev` 開出空視窗
+
+Evidence: PR #2。本機 `npm run lint`、`npm test`(1 passed)、`npm run build`、`npm run rs:clippy`、`npm run rs:test` 通過;CI run 37511365158 check pass(6m21s);debug exe 啟動後視窗標題「YouTube 下載」、中文正常(截圖)。
+Deviation: 驗證視窗原本用 `npm run tauri dev` → 改用 `npm run rs:build-debug` 啟動內嵌前端的 debug exe → 不必另開 dev server → 同上截圖。另外本機沒有 MSVC build tools,Rust 指令改走 GNU toolchain wrapper(沿用 bai-e-desktop-pet),lib 只留 `rlib`(windows-gnu 下 cdylib 超過 ld 的 export ordinal 上限);CI / release 仍用 MSVC。
 
 ## W02 — 子行程與工具安裝(`process.rs`、`tools`)
 
