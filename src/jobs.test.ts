@@ -5,6 +5,7 @@ import { jobStateText, jobStatusText, latestJobFor, offScreenJobs, upsertJob } f
 const job = (over: Partial<Job>): Job => ({
   id: 1,
   rev: 0,
+  kind: "download",
   videoId: "abc",
   url: "u",
   title: "t",

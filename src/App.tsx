@@ -12,17 +12,21 @@ import {
 } from "./api";
 import { upsertJob } from "./jobs";
 import { t } from "./i18n";
+import { BackIcon, ConvertIcon } from "./icons";
+import { Convert } from "./screens/Convert";
 import { Home } from "./screens/Home";
 import { Preparing } from "./screens/Preparing";
 import "./styles.css";
 
 type Phase = "preparing" | "ready";
+type Screen = "home" | "convert";
 
 export default function App() {
   const [phase, setPhase] = useState<Phase>("preparing");
   const [progress, setProgress] = useState<ToolsProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [screen, setScreen] = useState<Screen>("home");
 
   useEffect(() => {
     let stop: (() => void) | undefined;
@@ -81,12 +85,34 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="top">{t("appTitle")}</header>
+      <header className="top">
+        {screen === "convert" ? (
+          <button className="tb" onClick={() => setScreen("home")}>
+            <BackIcon />
+            {t("back")}
+          </button>
+        ) : (
+          <span>{t("appTitle")}</span>
+        )}
+        {phase === "ready" && screen === "home" && (
+          <button className="tb" onClick={() => setScreen("convert")}>
+            <ConvertIcon />
+            {t("convert")}
+          </button>
+        )}
+        {screen === "convert" && <span>{t("convert")}</span>}
+      </header>
       <main className="body">
         {phase === "preparing" ? (
           <Preparing progress={progress} error={error} onRetry={retry} />
         ) : (
-          <Home jobs={jobs} onSave={save} />
+          <>
+            {/* Home stays mounted so its search results survive a visit to 轉檔. */}
+            <div hidden={screen !== "home"}>
+              <Home jobs={jobs} onSave={save} />
+            </div>
+            {screen === "convert" && <Convert jobs={jobs} />}
+          </>
         )}
       </main>
     </div>

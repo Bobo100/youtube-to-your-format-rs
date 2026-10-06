@@ -274,3 +274,98 @@ body {
 .item.compact .info {
   padding: 2px 4px;
 }
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.tb:focus-visible,
+.drop:focus-visible,
+.chip:focus-visible {
+  outline: 3px solid var(--fg);
+  outline-offset: 3px;
+}
+
+.drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 26px 18px;
+  border: 3px dashed #64748b;
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.drop.over {
+  border-color: var(--accent);
+  background: #e0edfa;
+}
+
+.drop .icon {
+  width: 40px;
+  height: 40px;
+}
+
+.drop .big {
+  margin: 0;
+}
+
+.chips {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.chip {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 56px;
+  border: 3px solid #64748b;
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.chip.on {
+  border-color: var(--accent);
+  background: #e0edfa;
+  color: #062f59;
+}
+
+.btn.wide {
+  width: 100%;
+}
+
+.drop + .lbl {
+  margin-top: 18px;
+}

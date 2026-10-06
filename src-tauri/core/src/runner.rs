@@ -5,9 +5,10 @@ use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
 
+use crate::convert::{self, ConvertError};
 use crate::media::{self, MediaError};
 use crate::naming::{sanitize, unique_base};
-use crate::queue::{Job, RunFuture, RunOutcome, RunUpdate, Runner, SaveFormat};
+use crate::queue::{Job, JobKind, RunFuture, RunOutcome, RunUpdate, Runner, SaveFormat};
 use crate::applog;
 use crate::tools::update::Updater;
 use crate::tools::{retry_io, ToolPaths};
@@ -31,6 +32,9 @@ impl Runner for YtDlpRunner {
             if cancel.is_cancelled() {
                 return RunOutcome::Canceled;
             }
+            if job.kind == JobKind::Convert {
+                return self.convert(job, cancel, update).await;
+            }
             let dir = (self.output_dir)();
             if let Err(err) = tokio::fs::create_dir_all(&dir).await {
                 applog!("cannot create {}: {err}", dir.display());
@@ -48,6 +52,28 @@ impl Runner for YtDlpRunner {
 }
 
 impl YtDlpRunner {
+    /// Never uses `remove_job_files`: the source shares the output's name prefix,
+    /// so only the single output file may be deleted (run_convert does that).
+    async fn convert(&self, job: &Job, cancel: &CancellationToken, update: &(dyn Fn(RunUpdate) + Send + Sync)) -> RunOutcome {
+        let source = PathBuf::from(&job.url);
+        let output = convert::output_path(&source, job.format, &(self.output_dir)());
+        if let Some(dir) = output.parent() {
+            let _ = tokio::fs::create_dir_all(dir).await;
+        }
+        let report = |p: Option<f64>| match p {
+            Some(p) => update(RunUpdate::Progress(p)),
+            None => update(RunUpdate::Processing),
+        };
+        match convert::run_convert(&self.paths, &source, &output, job.format, cancel, &report).await {
+            Ok(path) => RunOutcome::Done(path),
+            Err(ConvertError::Canceled) => RunOutcome::Canceled,
+            Err(err) => {
+                applog!("converting {} failed: {}", source.display(), err.code());
+                RunOutcome::Failed { code: err.code(), detail: err.to_string() }
+            }
+        }
+    }
+
     async fn download(
         &self,
         job: &Job,
@@ -187,6 +213,7 @@ mod tests {
             url: "https://www.youtube.com/watch?v=jNQXAC9IVRw".into(),
             title: "Me at the zoo: 100% 原版".into(),
             format,
+            ..Request::default()
         };
         queue.enqueue(vec![request(SaveFormat::Audio), request(SaveFormat::Video)], false);
         settle(&queue, Duration::from_secs(300)).await;
@@ -218,6 +245,7 @@ mod tests {
             url: "https://www.youtube.com/watch?v=aqz-KE-bpKQ".into(),
             title: "big buck bunny".into(),
             format: SaveFormat::Video,
+            ..Request::default()
         }], false);
         let start = std::time::Instant::now();
         while !events.lock().unwrap().iter().any(|j| j.progress.is_some_and(|p| p > 0.01)) {

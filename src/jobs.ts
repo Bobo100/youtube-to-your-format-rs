@@ -31,6 +31,9 @@ export function jobStateText(job: Job): string {
 
 export function jobStatusText(job: Job): string {
   const what = job.format === "audio" ? t("whatAudio") : t("whatVideo");
+  if (job.kind === "convert" && job.state === "downloading") {
+    return t("jobConverting", { what, percent: Math.round((job.progress ?? 0) * 100) });
+  }
   switch (job.state) {
     case "queued":
       return t("jobQueued");
@@ -41,7 +44,7 @@ export function jobStatusText(job: Job): string {
     case "updating":
       return t("jobUpdating");
     case "done":
-      return t("jobDone");
+      return job.kind === "convert" ? t("convertDone") : t("jobDone");
     case "canceled":
       return t("jobCanceled");
     case "failed":

@@ -35,6 +35,15 @@ impl JobState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum JobKind {
+    #[default]
+    Download,
+    /// A local file; `url` holds its path.
+    Convert,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Job {
@@ -42,6 +51,7 @@ pub struct Job {
     /// Bumped on every change. Events can arrive out of order (cancel runs on a
     /// command thread, the worker on another), so the UI keeps the highest rev.
     pub rev: u64,
+    pub kind: JobKind,
     pub video_id: String,
     pub url: String,
     pub title: String,
@@ -53,8 +63,9 @@ pub struct Job {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Request {
+    pub kind: JobKind,
     pub video_id: String,
     pub url: String,
     pub title: String,
@@ -131,7 +142,9 @@ impl Queue {
                 // threads cannot both add the same item.
                 let mut jobs = self.inner.jobs.lock().unwrap();
                 let existing = jobs.iter().rev().find_map(|job| {
-                    let same = job.video_id == request.video_id && job.format == request.format;
+                    let same = job.kind == request.kind
+                        && job.video_id == request.video_id
+                        && job.format == request.format;
                     let keep = job.state.is_active() || (skip_done && job.state == JobState::Done);
                     (same && keep).then_some(job.id)
                 });
@@ -142,6 +155,7 @@ impl Queue {
                 let job = Job {
                     id,
                     rev: 0,
+                    kind: request.kind,
                     video_id: request.video_id,
                     url: request.url,
                     title: request.title,
@@ -302,6 +316,7 @@ mod tests {
             url: format!("https://youtu.be/{title}"),
             title: title.into(),
             format: SaveFormat::Audio,
+            ..Request::default()
         }
     }
 

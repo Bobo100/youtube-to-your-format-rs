@@ -48,6 +48,7 @@ export type JobState = "queued" | "downloading" | "processing" | "updating" | "d
 
 export type Job = {
   id: number;
+  kind: "download" | "convert";
   /** Higher is newer; events may arrive out of order. */
   rev: number;
   videoId: string;
@@ -93,4 +94,8 @@ export function diagnostics(id?: number): Promise<string> {
 /** Fired when a lookup failed like a YouTube change and yt-dlp is being updated. */
 export function onLookupUpdating(handler: () => void): Promise<UnlistenFn> {
   return listen("lookup-updating", () => handler());
+}
+
+export function convertFiles(paths: string[], format: SaveFormat): Promise<number[]> {
+  return invoke("convert_files", { paths, format });
 }

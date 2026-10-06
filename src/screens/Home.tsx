@@ -99,7 +99,10 @@ export function Home({ jobs, onSave }: Props) {
       )}
 
       <OtherJobs
-        jobs={offScreenJobs(jobs, state.status === "done" ? state.result.items.map((card) => card.id) : [])}
+        jobs={offScreenJobs(
+          jobs.filter((job) => job.kind === "download"),
+          state.status === "done" ? state.result.items.map((card) => card.id) : [],
+        )}
         onRetry={(job) => onSave([{ id: job.videoId, url: job.url, title: job.title, channel: null, durationS: null, thumbnail: "" }], job.format)}
       />
     </>

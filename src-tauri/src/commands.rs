@@ -8,7 +8,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use ytf_core::applog;
 use ytf_core::folders;
-use ytf_core::queue::{Job, JobId, Queue, Request, SaveFormat};
+use ytf_core::queue::{Job, JobId, JobKind, Queue, Request, SaveFormat};
 use ytf_core::reqwest;
 use ytf_core::runner::YtDlpRunner;
 use ytf_core::tools::update::Updater;
@@ -132,7 +132,7 @@ pub fn enqueue(queue: State<'_, Queue>, items: Vec<SaveItem>, format: SaveFormat
     queue.enqueue(
         items
             .into_iter()
-            .map(|item| Request { video_id: item.id, url: item.url, title: item.title, format })
+            .map(|item| Request { video_id: item.id, url: item.url, title: item.title, format, ..Request::default() })
             .collect(),
         skip_done,
     )
@@ -213,4 +213,21 @@ pub fn start_queue(app: &AppHandle, state: &AppState) -> Queue {
     });
     tauri::async_runtime::spawn(worker);
     queue
+}
+
+/// Queues local files for conversion; `paths` come from the file picker or a drop.
+#[tauri::command]
+pub fn convert_files(queue: State<'_, Queue>, paths: Vec<String>, format: SaveFormat) -> Vec<JobId> {
+    queue.enqueue(
+        paths
+            .into_iter()
+            .map(|path| {
+                let title = std::path::Path::new(&path)
+                    .file_name()
+                    .map_or_else(|| path.clone(), |name| name.to_string_lossy().into_owned());
+                Request { kind: JobKind::Convert, video_id: path.clone(), url: path, title, format }
+            })
+            .collect(),
+        false,
+    )
 }
