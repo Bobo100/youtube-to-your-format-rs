@@ -11,8 +11,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "start": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/with-gnu-toolchain.ps1 npx tauri dev --target x86_64-pc-windows-gnu",
-    "rs:clippy": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/with-gnu-toolchain.ps1 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
-    "rs:test": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/with-gnu-toolchain.ps1 cargo test --manifest-path src-tauri/Cargo.toml",
+    "rs:clippy": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/with-gnu-toolchain.ps1 cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets -- -D warnings",
+    "rs:test": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/with-gnu-toolchain.ps1 cargo test --manifest-path src-tauri/Cargo.toml --workspace",
     "rs:build-debug": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/with-gnu-toolchain.ps1 npx tauri build --debug --no-bundle --target x86_64-pc-windows-gnu"
   },
   "dependencies": {

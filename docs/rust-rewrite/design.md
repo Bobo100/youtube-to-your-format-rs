@@ -57,14 +57,15 @@ supersedes: Bobo100/SideProject-Youtube-To-Your-Format (Electron 版 1.0.5)
 ```
 youtube-to-your-format-rs/
 ├─ src/                 前端:Vite + React + TypeScript(無 router、無 Redux)
-└─ src-tauri/src/
-   ├─ commands.rs       前端能呼叫的唯一介面
-   ├─ process.rs        所有子行程的唯一出口:CREATE_NO_WINDOW、Job Object、UTF-8
-   ├─ tools/            yt-dlp / ffmpeg / Deno 的安裝、更新、checksum、rollback
-   ├─ ytdlp/            參數組裝、執行、進度解析、搜尋、播放清單展開、錯誤分類
-   ├─ queue/            下載排隊(一次一個)、取消、狀態事件
-   ├─ convert/          ffmpeg 本機轉檔
-   └─ settings/         設定檔讀寫
+└─ src-tauri/
+   ├─ src/commands.rs   前端能呼叫的唯一介面(Tauri 這層只放這個)
+   └─ core/src/         ytf-core:不依賴 Tauri 的邏輯，測試都在這裡
+      ├─ process.rs     所有子行程的唯一出口:CREATE_NO_WINDOW、Job Object、UTF-8
+      ├─ tools/         yt-dlp / ffmpeg / Deno 的安裝、更新、checksum、rollback
+      ├─ ytdlp/         參數組裝、執行、進度解析、搜尋、播放清單展開、錯誤分類
+      ├─ queue/         下載排隊(一次一個)、取消、狀態事件
+      ├─ convert/       ffmpeg 本機轉檔
+      └─ settings/      設定檔讀寫
 ```
 
 Tauri 的「後端」是同一個程式裡的 Rust 程式碼,不是伺服器。前端是打包進 app 的網頁,用 Windows 內建的 WebView2 顯示。
@@ -112,7 +113,7 @@ Tauri app 是 GUI 程式。用 `std::process::Command` 直接開 yt-dlp / ffmpeg
 | 工具 | 為什麼需要 | 來源 | 更新方式 |
 |---|---|---|---|
 | **yt-dlp** | 下載 | GitHub `yt-dlp/yt-dlp` `releases/latest`;stable 失敗時退到 `yt-dlp/yt-dlp-nightly-builds` | 自動 |
-| **ffmpeg + ffprobe** | 合併影音、轉 mp3、轉檔、檢查影片編碼。`-x` 也需要 ffprobe,解壓時兩個都要留 | **自己 repo 的 GitHub Release**(tag `tools-ffmpeg-<版本>`)。從 BtbN/FFmpeg-Builds 挑一個有版本號的 win64 gpl build 重新上傳,附 GPL 原始碼連結。BtbN 只保留最近 14 個 daily build 和每月最後一個 build 兩年,直接寫死它的 URL 遲早會 404 | 固定版本:URL 與 SHA-256 寫死在程式裡,升級 = 改常數、發新版 app |
+| **ffmpeg + ffprobe** | 合併影音、轉 mp3、轉檔、檢查影片編碼。`-x` 也需要 ffprobe | GyanD/codexffmpeg 的 essentials 7z(含 libx264,約 34 MB)。它從 2020 年起的每個有版本號的 release 都還在；BtbN 只保留最近 14 個 daily build,且 gpl 版 zip 要 184 MB | 固定版本：URL 與 SHA-256 寫死在程式裡，升級 = 改常數、發新版 app |
 | **Deno** | yt-dlp 下載 YouTube 時需要外部 JS runtime 解 JS challenge,官方 yt-dlp.exe **不含** runtime。選 Deno 是因為 yt-dlp 預設啟用它,支援最完整 | `denoland/deno` 的 GitHub Release(會永久保留),固定版本 | 固定版本:URL 與 SHA-256 寫死。yt-dlp 抬高最低版本時要發新版 app |
 
 yt-dlp 一律帶 `--js-runtimes deno:<bin 路徑>\deno.exe`,不依賴系統 PATH。
@@ -134,7 +135,6 @@ yt-dlp 一律帶 `--js-runtimes deno:<bin 路徑>\deno.exe`,不依賴系統 PATH
 - 安裝時機:Windows 上執行安裝步驟時 app 會被關掉,所以只在**啟動時、佇列還沒開始前**安裝。設 `installMode: "passive"`,只顯示進度條,不必按任何東西
 - **updater 私鑰**:放 GitHub Actions secret,同時把私鑰與密碼**另外離線備份**,備份位置寫在 repo `CLAUDE.md`。私鑰遺失 = 已安裝的 app 永遠無法再更新
 - **release 必須是正式(非 draft)且標為 latest**:tauri-action 預設建 draft,draft 期間 `releases/latest/download/latest.json` 拿不到
-- 工具 release(`tools-ffmpeg-*`)不能標成 latest,否則 updater 會抓錯 release
 - 安裝檔不做 Authenticode 簽章:第一次安裝(由 Bobo 執行)會看到 SmartScreen,之後的自動更新不受影響
 
 ## 下載流程(`ytdlp` + `queue`)
@@ -288,8 +288,6 @@ GitHub Actions,Windows runner:
 
 ## 未決 / 實作時確認
 
-- 選定的 ffmpeg 版本與重新上傳後的大小;確認 zip 內含 ffprobe
-- Deno 的固定版本;確認目前 yt-dlp 要求的最低版本
 - `--progress-template` 在影片兩條 stream 時的實際輸出,用真實輸出建立 fixture
 - Windows 10 舊機若沒有 WebView2,由 NSIS 用 `embedBootstrapper` 安裝
 - Backlog:驗證 yt-dlp 的 GPG 簽章

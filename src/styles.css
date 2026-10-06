@@ -1,6 +1,11 @@
 :root {
   --fg: #0b1220;
+  --muted: #334155;
   --bg: #f8fafc;
+  --card: #ffffff;
+  --line: #94a3b8;
+  --accent: #0b5cad;
+  --accent-ink: #ffffff;
   font-family: "Microsoft JhengHei UI", "Microsoft JhengHei", sans-serif;
   font-size: 20px;
   line-height: 1.5;
@@ -12,6 +17,86 @@ body {
   margin: 0;
 }
 
-.app {
+.top {
+  padding: 14px 20px;
+  background: var(--card);
+  border-bottom: 2px solid #e2e8f0;
+  font-size: 1.1rem;
+  font-weight: bold;
+}
+
+.body {
   padding: 20px;
+}
+
+.center {
+  max-width: 560px;
+  margin: 48px auto;
+  text-align: center;
+}
+
+.big {
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin: 8px 0 16px;
+}
+
+.help {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.btn {
+  min-height: 60px;
+  padding: 0 28px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.btn:focus-visible {
+  outline: 3px solid var(--fg);
+  outline-offset: 3px;
+}
+
+.bar {
+  height: 18px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 200ms ease-out;
+}
+
+.bar.indeterminate i {
+  width: 30%;
+  animation: slide 1.4s ease-in-out infinite;
+}
+
+@keyframes slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar.indeterminate i {
+    width: 100%;
+    animation: none;
+    opacity: 0.5;
+  }
 }

@@ -9,7 +9,9 @@
 ## 架構心智模型
 
 - **前端**:`src/`,打包進 app 的網頁，由 WebView2 顯示
-- **後端**:`src-tauri/src/`,同一個程式裡的 Rust 程式碼，不是伺服器
+- **後端**:同一個程式裡的 Rust 程式碼，不是伺服器。分兩層:
+  - `src-tauri/core/`(crate `ytf-core`):所有邏輯，不依賴 Tauri,單元測試都寫在這裡
+  - `src-tauri/src/`:只有 Tauri 接線(`commands.rs`、`lib.rs`),不放邏輯、不寫測試
 - **前後端唯一介面**:`commands.rs` 的 Tauri commands,以及 `job-updated` / `tools-progress` 兩個 event。契約見 [design.md](docs/rust-rewrite/design.md#前後端契約commandsrs--events)
 - **三個外部工具**:yt-dlp、ffmpeg、Deno,都不放進安裝檔。第一次開啟時下載到 `%LOCALAPPDATA%\youtube-to-your-format\bin\`
 - **對外連線**:零伺服器，只讀 GitHub Releases 與 YouTube
@@ -20,7 +22,8 @@
 - **畫面上不出現英文錯誤或技術詞**:錯誤在 Rust 端分類成代碼，文案由前端 i18n 決定；原文只進「複製問題資訊」與 log
 - **一個畫面一個主要動作**:字級 18 / 20px、按鈕高 ≥ 52px、文字對比 AAA、圖示都配文字、不用 emoji。新畫面先對照 [mockup](docs/mockups/ui/README.md)
 - **下載的工具一律驗 SHA-256**:ffmpeg / Deno 的 hash 寫死在程式裡;yt-dlp 比對同 release 的 `SHA2-256SUMS`
-- **工具 release(`tools-ffmpeg-*`)不能標成 latest**,否則 app updater 會抓錯 release
+- **測試寫在 `ytf-core`,不寫在 Tauri crate**:連結 Tauri 的測試執行檔沒有 app manifest,一跑就 `STATUS_ENTRYPOINT_NOT_FOUND`,所以 Tauri crate 設了 `test = false`
+- **升級 ffmpeg / Deno = 改 `core/src/tools/manifest.rs` 的常數**:URL、版本、SHA-256(對照發布者自己的 checksum)。yt-dlp 不固定版本
 
 ## 指令
 
