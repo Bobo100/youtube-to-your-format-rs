@@ -8,6 +8,9 @@ import {
   listJobs,
   onJobUpdated,
   onToolsProgress,
+  installAppUpdate,
+  onAppUpdateProgress,
+  type AppUpdateProgress,
   openOldFolder,
   prepareTools,
   setSettings,
@@ -56,6 +59,7 @@ const FIRST_CONTROL: Record<Screen, string> = { home: "what", convert: "drop-zon
 export default function App() {
   const [phase, setPhase] = useState<Phase>("preparing");
   const [progress, setProgress] = useState<ToolsProgress | null>(null);
+  const [update, setUpdate] = useState<AppUpdateProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [screen, setScreen] = useState<Screen>("home");
@@ -155,18 +159,26 @@ export default function App() {
     // In StrictMode the first effect is cleaned up before listen() resolves, so
     // prepare() runs once.
     let cancelled = false;
-    let stop: (() => void) | undefined;
-    onToolsProgress(setProgress).then((unlisten) => {
+    let stops: (() => void)[] = [];
+    Promise.all([onToolsProgress(setProgress), onAppUpdateProgress(setUpdate)]).then((unlisteners) => {
       if (cancelled) {
-        unlisten();
+        unlisteners.forEach((stop) => stop());
         return;
       }
-      stop = unlisten;
-      prepare();
+      stops = unlisteners;
+      // A new release installs before the tools or the queue start, because the
+      // installer closes the app; if it cannot install, this version carries on.
+      installAppUpdate()
+        .catch(() => false)
+        .then((installed) => {
+          if (installed) return;
+          setUpdate(null);
+          prepare();
+        });
     });
     return () => {
       cancelled = true;
-      stop?.();
+      stops.forEach((stop) => stop());
     };
   }, [prepare]);
 
@@ -209,7 +221,7 @@ export default function App() {
       </header>
       <main className="body" inert={confirmClose}>
         {phase === "preparing" ? (
-          <Preparing progress={progress} error={error} onRetry={retry} />
+          <Preparing progress={progress} update={update} error={error} onRetry={retry} />
         ) : (
           <>
             {/* Home stays mounted so its search results survive a visit elsewhere. */}

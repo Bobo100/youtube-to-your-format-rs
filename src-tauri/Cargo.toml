@@ -3,7 +3,7 @@ members = ["core"]
 
 [package]
 name = "youtube-to-your-format"
-version = "2.0.0"
+version = "2.0.0-rc.1"
 description = "給長輩用的 YouTube 下載 / 轉檔程式"
 authors = ["Bobo100"]
 edition = "2021"
@@ -40,6 +40,7 @@ tokio = { version = "1.53.2", features = ["sync"] }
 ytf-core = { path = "core" }
 tauri-plugin-single-instance = "2.5.2"
 tauri-plugin-dialog = "2.8.1"
+tauri-plugin-updater = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
