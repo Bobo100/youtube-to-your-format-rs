@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { preparingView } from "./preparing";
+import { preparingView, updatingView } from "./preparing";
 import { errorMessage } from "./i18n";
 
 const base = { tool: "deno" as const, phase: "download" as const };
@@ -18,6 +18,17 @@ describe("preparingView", () => {
 
   it("names the step in plain Chinese", () => {
     expect(preparingView({ ...base, step: 1, steps: 3, received: 0, total: 1 }).detail).toBe("第 1 步，共 3 步");
+  });
+});
+
+describe("updatingView", () => {
+  it("shows download progress, capped at 100", () => {
+    expect(updatingView({ version: "2.0.1", received: 25, total: 100 }).percent).toBe(25);
+    expect(updatingView({ version: "2.0.1", received: 120, total: 100 }).percent).toBe(100);
+  });
+
+  it("is indeterminate until the size is known", () => {
+    expect(updatingView({ version: "2.0.1", received: 0, total: null }).percent).toBeNull();
   });
 });
 

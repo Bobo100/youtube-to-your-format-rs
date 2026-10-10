@@ -1,3 +1,4 @@
+mod app_update;
 mod commands;
 
 use tauri::{Emitter, Manager};
@@ -21,6 +22,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let app = window.app_handle();
@@ -50,6 +52,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            app_update::install_app_update,
             commands::prepare_tools,
             commands::lookup,
             commands::enqueue,

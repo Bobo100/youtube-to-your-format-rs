@@ -1,6 +1,8 @@
 const zh = {
   appTitle: "YouTube 下載",
   preparingTitle: "第一次使用，正在準備…",
+  updatingTitle: "有新版本，正在更新…",
+  updatingHint: "更新完會自動重新打開，請不要關掉視窗",
   preparingStep: "第 {step} 步，共 {steps} 步",
   preparingHint: "大約需要 1 到 3 分鐘，請不要關掉視窗",
   preparingExtract: "正在整理檔案…（第 {step} 步，共 {steps} 步）",
@@ -108,6 +110,8 @@ export type MessageKey = keyof typeof zh;
 const en: Record<MessageKey, string> = {
   appTitle: "YouTube Downloader",
   preparingTitle: "Getting ready for the first time…",
+  updatingTitle: "Updating to the new version…",
+  updatingHint: "The app reopens by itself when it is done. Please keep the window open.",
   preparingStep: "Step {step} of {steps}",
   preparingHint: "This takes 1 to 3 minutes. Please keep the window open.",
   preparingExtract: "Unpacking… (step {step} of {steps})",
