@@ -316,8 +316,16 @@ Done: PR #10 · verify: manual: 安裝 v2.0.0-rc.1 後打開，自己更新並�
 
 接續 W-08 發現的問題。每次安裝與自動更新都會換掉 `uninstall.exe`,所以已裝的舊版也會在下次更新後拿到這個 hook;排在家人安裝前，是為了 W-09 的 QA 能一起驗。
 
-- [ ] `src-tauri/windows/hooks.nsh` 的 `NSIS_HOOK_POSTUNINSTALL`:勾「刪除 app 資料」且不是更新時，刪掉 `%LOCALAPPDATA%\youtube-to-your-format` 裡的 `bin\`、`logs\`、`settings*.json`,再移掉空資料夾;只刪 app 寫的名字。不勾或靜默解除安裝時全部保留
-- [ ] Verify: 發 2.0.0-rc.3(CI 第一次編譯 hook);rc.2 自動更新到 rc.3 後 `bin\` 與設定還在(更新不跑解除安裝，這項只是回歸檢查);`uninstall.exe /S` 後 `bin\` 還在;資料夾放一個自己的檔，到 Windows「應用程式」解除安裝並勾選後，只剩那個檔與資料夾(`bin\yt-dlp\_internal` 也刪掉)
+- [x] `src-tauri/windows/hooks.nsh` 的 `NSIS_HOOK_POSTUNINSTALL`:勾「刪除 app 資料」且不是更新時，刪掉 `%LOCALAPPDATA%\youtube-to-your-format` 裡的 `bin\`、`logs\`、`settings*.json`,再移掉空資料夾;只刪 app 寫的名字。不勾或靜默解除安裝時全部保留
+- [x] Verify: 發 2.0.0-rc.3(CI 第一次編譯 hook);rc.2 自動更新到 rc.3 後 `bin\` 與設定還在(更新不跑解除安裝，這項只是回歸檢查);`uninstall.exe /S` 後 `bin\` 還在;資料夾放一個自己的檔，到 Windows「應用程式」解除安裝並勾選後，只剩那個檔與資料夾(`bin\yt-dlp\_internal` 也刪掉)
+
+Evidence:
+- release run 38040203581(v2.0.0-rc.3)成功，正式、非 prerelease;安裝檔 4.4 MB。PR #11 之前本機 GNU debug NSIS bundle 先編譯過，產生的 installer.nsi 有 include hook
+- 這台電腦的 rc.2 打開後 log:`installing app update 2.0.0-rc.2 -> 2.0.0-rc.3` → 3 秒後 `starting youtube-to-your-format 2.0.0-rc.3`;`bin\`(324 MB)與 `logs\` 保留
+- `uninstall.exe /S`:程式移除,`bin\`、`logs\` 保留
+- 重裝 rc.3、資料夾放 `my-note.txt`,Bobo 從 Windows「應用程式」解除安裝並勾「刪除 app 資料」:資料夾只剩 `my-note.txt`(`bin\yt-dlp\_internal` 也刪掉),`%LOCALAPPDATA%\dev.bobo100.youtubetoyourformat` 與解除安裝登錄都不見
+
+Done: PR #11 · verify: manual: rc.2 自動更新到 rc.3 後工具保留;靜默解除安裝保留;勾「刪除 app 資料」解除安裝後只剩使用者自己的檔 → pass · note: 工具實際約 324 MB,不是先前估的 120 MB
 
 ### W-09 — 上線到家人電腦
 
