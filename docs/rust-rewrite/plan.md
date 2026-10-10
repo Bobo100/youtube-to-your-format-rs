@@ -312,6 +312,13 @@ Deviation:
 
 Done: PR #10 · verify: manual: 安裝 v2.0.0-rc.1 後打開，自己更新並重新打開成 v2.0.0-rc.2;安裝檔 4.4 MB → pass · verify: `npm test` and `npm run rs:clippy` → pass · note: 金鑰離線備份移到 W-09 家人安裝前
 
+### W-10 — 解除安裝可以清掉工具與設定
+
+接續 W-08 發現的問題。每次安裝與自動更新都會換掉 `uninstall.exe`,所以已裝的舊版也會在下次更新後拿到這個 hook;排在家人安裝前，是為了 W-09 的 QA 能一起驗。
+
+- [ ] `src-tauri/windows/hooks.nsh` 的 `NSIS_HOOK_POSTUNINSTALL`:勾「刪除 app 資料」且不是更新時，刪掉 `%LOCALAPPDATA%\youtube-to-your-format` 裡的 `bin\`、`logs\`、`settings*.json`,再移掉空資料夾;只刪 app 寫的名字。不勾或靜默解除安裝時全部保留
+- [ ] Verify: 發 2.0.0-rc.3(CI 第一次編譯 hook);rc.2 自動更新到 rc.3 後 `bin\` 與設定還在(更新不跑解除安裝，這項只是回歸檢查);`uninstall.exe /S` 後 `bin\` 還在;資料夾放一個自己的檔，到 Windows「應用程式」解除安裝並勾選後，只剩那個檔與資料夾(`bin\yt-dlp\_internal` 也刪掉)
+
 ### W-09 — 上線到家人電腦
 
 - [ ] **家人安裝前**:updater 私鑰檔與密碼備份到這台電腦以外(密碼管理器、隨身碟或雲端，兩者不放同一處),`CLAUDE.md` 改成實際的備份方式
