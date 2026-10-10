@@ -60,6 +60,8 @@ export default function App() {
   const [phase, setPhase] = useState<Phase>("preparing");
   const [progress, setProgress] = useState<ToolsProgress | null>(null);
   const [update, setUpdate] = useState<AppUpdateProgress | null>(null);
+  // A progress event can arrive after install_app_update has already answered.
+  const updateSettled = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [screen, setScreen] = useState<Screen>("home");
@@ -160,7 +162,10 @@ export default function App() {
     // prepare() runs once.
     let cancelled = false;
     let stops: (() => void)[] = [];
-    Promise.all([onToolsProgress(setProgress), onAppUpdateProgress(setUpdate)]).then((unlisteners) => {
+    Promise.all([
+      onToolsProgress(setProgress),
+      onAppUpdateProgress((next) => !updateSettled.current && setUpdate(next)),
+    ]).then((unlisteners) => {
       if (cancelled) {
         unlisteners.forEach((stop) => stop());
         return;
@@ -172,6 +177,7 @@ export default function App() {
         .catch(() => false)
         .then((installed) => {
           if (installed) return;
+          updateSettled.current = true;
           setUpdate(null);
           prepare();
         });

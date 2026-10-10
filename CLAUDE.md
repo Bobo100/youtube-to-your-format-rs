@@ -42,11 +42,11 @@ npm run rs:build-debug             # 不打包的 debug exe(內嵌前端,不需 
 
 ## 發版
 
-1. `src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`package.json` 三處的 version 改成同一個
+1. `src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`package.json` 的 version 改成同一個(`Cargo.lock`、`package-lock.json` 裡本 app 那一筆跟著改)
 2. merge 進 main 後打 tag `v<version>` 並 push:`.github/workflows/release.yml` 產出 NSIS 安裝檔、`.sig` 與 `latest.json`,發布成**正式、非 prerelease** 的 release(已安裝的 app 讀 `releases/latest/download/latest.json`,draft 或 prerelease 都不會被當成 latest)
 3. workflow 最後一步檢查安裝檔 ≤ 15 MB
 
-**自動更新只在啟動時、佇列還沒開始前做**(`app_update.rs`):Windows 的安裝程式會關掉 app。debug build 不檢查更新。
+**自動更新只在啟動時、佇列還沒開始前做**(`app_update.rs`):Windows 的安裝程式會關掉 app。檢查最多 20 秒、下載最多 10 分鐘，失敗就照用目前版本;不要把 timeout 設在 updater builder 上(它算整個請求，慢速網路永遠下載不完)。debug build 不檢查更新。
 
 **updater 金鑰**:私鑰在 Actions secret `TAURI_SIGNING_PRIVATE_KEY`(密碼 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`),公鑰寫在 `tauri.conf.json`。**私鑰檔與密碼另外由 Bobo 備份**:密碼在 Bobo 的密碼管理器，私鑰檔原檔在 A 電腦 `%USERPROFILE%\.tauri\ytf-updater.key`。兩者遺失任一個，已安裝的 app 就再也收不到更新(只能請家人手動重裝)。不要換公鑰。
 

@@ -10,6 +10,10 @@ use ytf_core::queue::Queue;
 
 /// A slow or blocked GitHub must not keep the family waiting on the start screen.
 const CHECK_TIMEOUT: Duration = Duration::from_secs(20);
+/// The installer is ~15 MB; this only stops a stalled download, not a slow one.
+/// Not set on the updater itself: its timeout covers each whole request, so a
+/// short one would cut every download on a slow line.
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,23 +43,29 @@ pub async fn install_app_update(app: AppHandle, queue: State<'_, Queue>) -> Resu
     }
 }
 
-async fn check_and_install(app: &AppHandle) -> Result<bool, tauri_plugin_updater::Error> {
-    let updater = app.updater_builder().timeout(CHECK_TIMEOUT).build()?;
-    let Some(update) = updater.check().await? else {
+async fn check_and_install(app: &AppHandle) -> Result<bool, String> {
+    let updater = app.updater().map_err(|err| err.to_string())?;
+    let checked = tokio::time::timeout(CHECK_TIMEOUT, updater.check())
+        .await
+        .map_err(|_| "update check timed out".to_owned())?
+        .map_err(|err| err.to_string())?;
+    let Some(update) = checked else {
         return Ok(false);
     };
     applog!("installing app update {} -> {}", update.current_version, update.version);
     let version = update.version.clone();
     let mut received = 0u64;
     let _ = app.emit("app-update-progress", AppUpdateProgress { version: version.clone(), received, total: None });
-    update
-        .download_and_install(
-            |chunk, total| {
-                received += chunk as u64;
-                let _ = app.emit("app-update-progress", AppUpdateProgress { version: version.clone(), received, total });
-            },
-            || applog!("app update downloaded, starting the installer"),
-        )
-        .await?;
+    let install = update.download_and_install(
+        |chunk, total| {
+            received += chunk as u64;
+            let _ = app.emit("app-update-progress", AppUpdateProgress { version: version.clone(), received, total });
+        },
+        || applog!("app update downloaded, starting the installer"),
+    );
+    tokio::time::timeout(DOWNLOAD_TIMEOUT, install)
+        .await
+        .map_err(|_| "update download timed out".to_owned())?
+        .map_err(|err| err.to_string())?;
     Ok(true)
 }

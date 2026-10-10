@@ -45,6 +45,7 @@ jobs:
         shell: pwsh
         run: |
           $installer = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          if (-not $installer) { throw "no NSIS installer found under src-tauri/target/release/bundle/nsis" }
           $mb = [math]::Round($installer.Length / 1MB, 2)
           Write-Output "$($installer.Name): $mb MB"
           if ($installer.Length -gt 15MB) { throw "installer is $mb MB, over the 15 MB budget" }
