@@ -5516,7 +5516,7 @@ dependencies = [
 
 [[package]]
 name = "youtube-to-your-format"
-version = "2.0.0-rc.1"
+version = "2.0.0-rc.2"
 dependencies = [
  "serde",
  "serde_json",
