@@ -1,0 +1,50 @@
+name: Release
+
+# Push a tag `v<version>` matching tauri.conf.json to publish an installed-app update.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: Tag matches the app version
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ("v$version" -ne "${{ github.ref_name }}") { throw "tag ${{ github.ref_name }} does not match app version $version" }
+      # Installed apps read releases/latest/download/latest.json, so the release must be
+      # published (not a draft) and not a prerelease, or GitHub never marks it latest.
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: YouTube 下載 ${{ github.ref_name }}
+          releaseBody: 下載 `*-setup.exe` 安裝。已安裝的程式下次打開時會自動更新。
+          releaseDraft: false
+          prerelease: false
+          updaterJsonPreferNsis: true
+      - name: Installer is at most 15 MB
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $mb = [math]::Round($installer.Length / 1MB, 2)
+          Write-Output "$($installer.Name): $mb MB"
+          if ($installer.Length -gt 15MB) { throw "installer is $mb MB, over the 15 MB budget" }

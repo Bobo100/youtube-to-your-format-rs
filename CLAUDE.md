@@ -40,6 +40,18 @@ npm run rs:build-debug             # 不打包的 debug exe(內嵌前端,不需 
 
 **Toolchain 坑**:Bobo 的電腦沒有 MSVC build tools,Git Bash 的 `/usr/bin/link` 還會蓋掉 `link.exe`,所以直接跑 `cargo build` 會在 link 失敗。本機的 Rust 指令一律走 `scripts/with-gnu-toolchain.ps1`(WinLibs + `stable-x86_64-pc-windows-gnu`),上面的 `rs:*` 與 `start` 已包好。CI 與 release 在 GitHub Actions 上用 MSVC,正式安裝檔不受影響。要在本機做 GNU 安裝檔時，先看 bai-e-desktop-pet 的 `verify-gnu-runtime.ps1`(GNU 版 NSIS 可能漏包 `WebView2Loader.dll`)。
 
+## 發版
+
+1. `src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`package.json` 三處的 version 改成同一個
+2. merge 進 main 後打 tag `v<version>` 並 push:`.github/workflows/release.yml` 產出 NSIS 安裝檔、`.sig` 與 `latest.json`,發布成**正式、非 prerelease** 的 release(已安裝的 app 讀 `releases/latest/download/latest.json`,draft 或 prerelease 都不會被當成 latest)
+3. workflow 最後一步檢查安裝檔 ≤ 15 MB
+
+**自動更新只在啟動時、佇列還沒開始前做**(`app_update.rs`):Windows 的安裝程式會關掉 app。debug build 不檢查更新。
+
+**updater 金鑰**:私鑰在 Actions secret `TAURI_SIGNING_PRIVATE_KEY`(密碼 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`),公鑰寫在 `tauri.conf.json`。**私鑰檔與密碼另外由 Bobo 備份**:密碼在 Bobo 的密碼管理器，私鑰檔原檔在 A 電腦 `%USERPROFILE%\.tauri\ytf-updater.key`。兩者遺失任一個，已安裝的 app 就再也收不到更新(只能請家人手動重裝)。不要換公鑰。
+
+**圖示**:原稿 `src-tauri/icons/app-icon.svg`,改完跑 `npx tauri icon src-tauri/icons/app-icon.svg -o src-tauri/icons`,再刪掉產生的 `android/`、`ios/`、`64x64.png`(只出 Windows)。
+
 ## 文件地圖
 
 | 內容 | 位置 |
