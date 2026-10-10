@@ -1,6 +1,7 @@
 ---
 state: in-progress
-updated: 2026-10-07
+updated: 2026-10-10
+plan_format: 2
 ---
 
 # Rust 重寫 — Plan
@@ -13,7 +14,11 @@ updated: 2026-10-07
 
 每個 W 一個 PR(`type(scope): 中文描述`),PR merge 前在 branch 上勾選並附證據。
 
-## W01 — 專案骨架與 CI
+## Phase 1 — 能用的 app
+
+Checkpoint: debug exe 可以搜尋、下載 MP3 / MP4、轉本機檔案、改設定;壞掉的 yt-dlp 會自動更新後重試。
+
+### W-01 — 專案骨架與 CI
 
 - [x] GitHub repo `Bobo100/youtube-to-your-format-rs`(public,同舊 repo)
 - [x] Tauri 2 + Vite + React + TypeScript 骨架,app 名稱、identifier、視窗大小;NSIS currentUser 安裝
@@ -24,12 +29,14 @@ updated: 2026-10-07
 Evidence: PR #2。本機 `npm run lint`、`npm test`(1 passed)、`npm run build`、`npm run rs:clippy`、`npm run rs:test` 通過;CI run 37511365158 check pass(6m21s);debug exe 啟動後視窗標題「YouTube 下載」、中文正常(截圖)。
 Deviation: 驗證視窗原本用 `npm run tauri dev` → 改用 `npm run rs:build-debug` 啟動內嵌前端的 debug exe → 不必另開 dev server → 同上截圖。另外本機沒有 MSVC build tools,Rust 指令改走 GNU toolchain wrapper(沿用 bai-e-desktop-pet),lib 只留 `rlib`(windows-gnu 下 cdylib 超過 ld 的 export ordinal 上限);CI / release 仍用 MSVC。
 
-## W02 — 子行程與工具安裝(`process.rs`、`tools`)
+Done: PR #2 · verify: `npm test` and `npm run rs:test` → pass · note: CI run 37511365158 pass;debug exe 開出視窗
+
+### W-02 — 子行程與工具安裝(`process.rs`、`tools`)
 
 - [x] `process.rs`:`CREATE_NO_WINDOW`、Job Object + `KILL_ON_JOB_CLOSE`、UTF-8、區分「不見了 / 被拒」
 - [x] ffmpeg:選定固定版本、確認含 ffprobe(removed from scope: 重新上傳到 `tools-ffmpeg-<版本>` → 改直接用 GyanD,見 Deviation)
 - [x] Deno:選定版本並確認符合 yt-dlp 最低需求
-- [x] 三個工具的下載(續傳、重試)、SHA-256 驗證、解壓到 `%LOCALAPPDATA%\youtube-to-your-formatin\`
+- [x] 三個工具的下載(續傳、重試)、SHA-256 驗證、解壓到 `%LOCALAPPDATA%\youtube-to-your-format\bin\`
 - [x] `--js-runtimes` 指向 Deno — W03 PR #4 用 `ytdlp::base_args` 做好
 - [x] 第一次準備畫面 + `tools-progress`
 - [x] Verify: 單元測試(SHA2-256SUMS 解析、驗證；版本比較移到 W05);手動：刪掉 `bin\` 後重開會重新準備，中途斷網可續傳;全程無 console 視窗
@@ -64,7 +71,9 @@ Deviation:
 - 「中途斷網」:原本手動拔網路測 → 改用強制結束 app 再重開，加上 Range 續傳的整合測試 → 兩者都會留下 `.part`,走的是同一條路徑。
 - 架構:原本把 `process.rs`、`tools/` 放在 `src-tauri/src/` → 改放進新的 workspace crate `ytf-core`,Tauri crate 設 `test = false` → 連結 Tauri 的測試執行檔一跑就 `STATUS_ENTRYPOINT_NOT_FOUND` → design / CLAUDE.md 已同步更新。
 
-## W03 — 查詢與主畫面卡片(`lookup`)
+Done: PR #3 · verify: `npm test` and `npm run rs:test` → pass · note: 手動刪 bin 重新準備、斷網續傳、無 console 視窗
+
+### W-03 — 查詢與主畫面卡片(`lookup`)
 
 - [x] 關鍵字 `ytsearch10:`、單一影片(`v=` 預設 `--no-playlist`)、播放清單 / 頻道(`-I 1:200`、`truncated`)
 - [x] 主畫面：大輸入框、影片卡片(縮圖用 `i.ytimg.com`、CSP)、「整個清單」「全部存成音樂」
@@ -86,7 +95,7 @@ Evidence: PR #4。`npm run rs:test` 36 passed,新增：
 
 Deviation:網址 / 關鍵字判斷原本打算在前端用 Vitest 測 → 改由 Rust 的 `Input::parse` 判斷，前端只把文字送過去 → 只在一處判斷，不會有兩套規則 → 測試在 `ytdlp::input`。
 
-## W04 — 下載排隊與進度(`queue`、`ytdlp`)
+### W-04 — 下載排隊與進度(`queue`、`ytdlp`)
 
 - [x] 一次一個的 worker、`job-updated` 整個快照
 - [x] 進度 JSON(兩條 stream 合併)、`processing` 不定進度
@@ -122,12 +131,14 @@ Deviation:
 
 對抗性 review 修正:onedir yt-dlp;批次與重複點擊不重複排入;`rev` 與只在狀態真的改變時才發 event;`list_jobs` 讓重新整理後能同步;焦點交給新出現的按鈕;live region 只播報狀態、不唸百分比;ffprobe 失敗時保留檔案；轉檔後換檔會重試；轉檔一律輸出 `.mp4`;已取消的工作不再啟動 yt-dlp;清暫存檔會重試;cookies 每次用暫存複本，查詢時也帶上;單一 stream 的進度修正;檔名用 UTF-16 長度計算。沒修：worker panic(release 是 `panic=abort`,panic 時整個 app 直接結束);長片轉檔沒有進度、「其他下載」不會收起來(兩項都寫進 vault backlog)。
 
-## W05 — 錯誤分類與自動修復
+Done: PR #5 · verify: `npm test` and `npm run rs:test` → pass · note: `npm run rs:test -- --ignored` 真實下載音樂 / 影片;手動取消後無殘檔
+
+### W-05 — 錯誤分類與自動修復
 
 - [x] 錯誤代碼分類(design 表中全部代碼),前端白話文案
 - [x] yt-dlp 版本比較(stable / nightly 格式),從 W02 移過來
 - [x] yt-dlp 更新：一天一次背景檢查、換檔前取 queue 鎖、`.new` → `.old` 換檔
-- [ ] rollback 到上一版(removed from scope: 見 Deviation)
+- [ ] rollback 到上一版 (removed: 見 Deviation)
 - [x] `extractor` 自動流程:stable → nightly → 「過一兩天再試」
 - [x] `copy_diagnostics`、log 輪替、啟動時記錄工具版本與 hash
 - [x] Verify: 每個代碼都有真實 stderr fixture 的單元測試;換檔 / rollback 測試;手動放舊版 yt-dlp 觸發自動更新後重試
@@ -174,7 +185,9 @@ Deviation:
 - 重試的新下載不沿用舊的「已複製」狀態；複製失敗會顯示提示
 - 新增本機存檔被擋的文案
 
-## W06 — 轉檔(`convert`)
+Done: PR #6 · verify: `npm test` and `npm run rs:test` → pass · note: 手動放舊版 yt-dlp 觸發自動更新後重試成功;rollback 移出範圍
+
+### W-06 — 轉檔(`convert`)
 
 - [x] 拖檔 / 選檔、MP3 / MP4、輸出命名規則、不可寫時改存預設資料夾
 - [x] `ffprobe` 總長度 + `-nostats -progress pipe:1`
@@ -215,7 +228,9 @@ Evidence: PR #7。`npm run rs:test` 88 passed,新增：
 
 Deviation:轉檔的唯一檔名原本打算沿用下載的「檔名開頭唯一」規則 → 改成只比對完整檔名，最終檔名在寫完後才用 hard link 不覆蓋地決定 → 原檔本身就和輸出共用開頭(`歌.wav` / `歌.mp3`),沿用的話會變成 `歌 (2).mp3`,而且取消時的「刪掉所有以這個開頭的檔案」會連原檔一起刪掉 → 轉檔失敗或取消時只刪它寫出的那一個檔，不走 `remove_job_files`。
 
-## W07 — 設定與細節
+Done: PR #7 · verify: `npm test` and `npm run rs:test` → pass · note: 手動 wav → mp3、mp4 → mp4
+
+### W-07 — 設定與細節
 
 - [x] 設定 4 項(資料夾、字級 大 / 特大、亮 / 暗、中文 / English),損毀 fallback
 - [ ] 舊資料夾 `下載\youtube-downloads` 提示(gap:實作完成，但這台電腦沒有舊資料夾，留給 W09 在家人電腦上確認)
@@ -269,18 +284,36 @@ Deviation:
 - 「確定關掉」原本直接關 → 改成先 `cancel_all` 並等清理(最多 10 秒)→ 實測直接被 Job Object 殺掉時，會留下名字看起來完整、其實是截斷的 `.mp3`。之後再加上 `.ytf` 暫存名，從根本避免。
 - 舊資料夾提示原本寫「提示一次」→ 改成每次啟動都顯示，直到按「知道了」→ 只顯示一次的話，家人當下沒注意就再也找不到。
 
-## W08 — 發布與自動更新
+## Phase 2 — 發布與上線
+
+Checkpoint: 家人電腦裝的是 GitHub Release 的 2.0.0,之後的版本會自動更新;舊 repo 已封存。
+
+### W-08 — 發布與自動更新
 
 - [ ] updater 金鑰：私鑰進 Actions secret,另外離線備份(位置寫進 `CLAUDE.md`)
 - [ ] release workflow:打 tag → NSIS 安裝檔 + `latest.json`,正式、標為 latest;`installMode: "passive"`,只在啟動且佇列空時安裝
 - [ ] Verify: 發 2.0.0-rc.1 → rc.2,已裝的 rc.1 啟動後自動更新到 rc.2;安裝檔 ≤ 15 MB
 
-## W09 — 上線到家人電腦
+### W-09 — 上線到家人電腦
 
 - [ ] 在沒有管理員權限的帳號跑完 `CLAUDE.md` 手動 QA 清單
 - [ ] 家人電腦：解除安裝舊版、安裝 2.0.0、確認舊資料夾提示
 - [ ] 舊 repo README 指向新 repo 並封存;`side-project-ideas.md` 同步
 - [ ] Verify: QA 清單逐項結果寫進 `docs/rust-rewrite/evidence/qa-2.0.0.md`
+
+## Former IDs
+
+| Old | New |
+|---|---|
+| W01 | W-01 |
+| W02 | W-02 |
+| W03 | W-03 |
+| W04 | W-04 |
+| W05 | W-05 |
+| W06 | W-06 |
+| W07 | W-07 |
+| W08 | W-08 |
+| W09 | W-09 |
 
 ## Close checklist
 
