@@ -26,6 +26,7 @@
 - **yt-dlp 用 onedir 版(`bin\yt-dlp\`),不要換回 onefile `yt-dlp.exe`**:onefile 每次執行都解壓到 `%TEMP%\_MEI*`,被 Job Object 殺掉時不會清掉,每次取消漏 24 MB
 - **寫檔一律先寫暫存名，完成後才用 `naming::place_without_replacing` 放到最終檔名**:下載寫 `<base>.ytf.<ext>`、轉檔寫 `.ytf-part`。被殺掉(關機、強制結束)時不會留下名字看起來完整的截斷檔，也不會覆蓋使用者的檔案
 - **每個下載的檔名開頭(`<base>.`)必須獨一無二**(`naming::unique_base`):取消時會刪掉資料夾裡所有以它開頭的檔案。所以同一首先存音樂再存影片，影片會叫 `歌 (2).mp4`。**轉檔不適用這條**:原檔和輸出共用開頭，轉檔只能刪它寫出的那一個檔(`convert::output_path`)
+- **app 資料夾裡新增或改名檔案時，同步改 `src-tauri/windows/hooks.nsh`**:解除安裝勾「刪除 app 資料」時只刪那裡列出的名字(Tauri 內建的勾選框只刪 `%LOCALAPPDATA%\<identifier>`,不是我們的資料夾)
 - **升級 ffmpeg / Deno = 改 `core/src/tools/manifest.rs` 的常數**:URL、版本、SHA-256(對照發布者自己的 checksum)。yt-dlp 不固定版本
 
 ## 指令

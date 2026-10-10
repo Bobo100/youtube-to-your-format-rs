@@ -3,7 +3,7 @@ members = ["core"]
 
 [package]
 name = "youtube-to-your-format"
-version = "2.0.0-rc.2"
+version = "2.0.0-rc.3"
 description = "給長輩用的 YouTube 下載 / 轉檔程式"
 authors = ["Bobo100"]
 edition = "2021"
