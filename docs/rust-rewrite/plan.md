@@ -288,9 +288,26 @@ Checkpoint: 家人電腦裝的是 GitHub Release 的 2.0.0,之後的版本會自
 
 ### W-08 — 發布與自動更新
 
-- [ ] updater 金鑰：私鑰進 Actions secret,另外離線備份(位置寫進 `CLAUDE.md`)
-- [ ] release workflow:打 tag → NSIS 安裝檔 + `latest.json`,正式、標為 latest;`installMode: "passive"`,只在啟動且佇列空時安裝
-- [ ] Verify: 發 2.0.0-rc.1 → rc.2,已裝的 rc.1 啟動後自動更新到 rc.2;安裝檔 ≤ 15 MB
+- [x] updater 金鑰：私鑰與密碼進 Actions secret(私鑰從檔案直接設，不經過對話)
+- [ ] 私鑰檔另外離線備份，位置寫進 `CLAUDE.md`(gap:目前只寫了原檔位置，等 Bobo 告知備份位置)
+- [x] release workflow:打 tag → NSIS 安裝檔 + `latest.json`,正式、標為 latest;`installMode: "passive"`,只在啟動且佇列空時安裝
+- [x] app 圖示(原稿 `src-tauri/icons/app-icon.svg`)
+- [x] Verify: 發 2.0.0-rc.1 → rc.2,已裝的 rc.1 啟動後自動更新到 rc.2;安裝檔 ≤ 15 MB
+
+Evidence:
+- release run 38017280242(v2.0.0-rc.1)與 38017703978(v2.0.0-rc.2)都成功：正式、非 prerelease,`releases/latest` 指向 rc.2;assets 有 `*-setup.exe`、`.sig`、`latest.json`
+- 安裝檔 4.4 MB(workflow 的大小檢查步驟)
+- 這台電腦用 `/S` 安裝 rc.1(currentUser,裝在 `%LOCALAPPDATA%\youtube-to-your-format`),打開後 log:`installing app update 2.0.0-rc.1 -> 2.0.0-rc.2` → `app update downloaded, starting the installer` → 2 秒後 `starting youtube-to-your-format 2.0.0-rc.2`;exe 與解除安裝登錄的版本都變成 2.0.0-rc.2,`bin\` 的工具與設定保留
+- `npm test` 16 passed、`npm run lint`、`npm run rs:clippy` 通過;debug exe 啟動正常(updater plugin 讀得懂設定)
+
+對抗性 review 修正：
+- updater builder 的 timeout 算整個請求，慢速網路下載不完 → 改成檢查 20 秒、下載 10 分鐘，各自用 tokio timeout
+- 更新結束後才到的 progress event 不再把畫面切回「正在更新」
+- 找不到安裝檔時大小檢查會失敗，不再靜默通過
+
+Deviation:
+- 金鑰原本在對話框用 `--ci -p` 產生 → 密碼出現在對話紀錄 → 改在使用者自己的 PowerShell 互動輸入，重新產生金鑰與密碼(還沒簽過任何東西，換掉沒有成本)
+- 發現：安裝位置就是 app 的資料夾(`%LOCALAPPDATA%\youtube-to-your-format`)。解除安裝只刪自己裝的檔、`RMDir` 不遞迴，所以工具與設定不會被刪;但「刪除 app 資料」勾選框刪的是 `%LOCALAPPDATA%\<identifier>`,對我們沒作用，解除安裝後會留下約 120 MB 工具 → 寫進 vault backlog,不在 W-08 處理
 
 ### W-09 — 上線到家人電腦
 
