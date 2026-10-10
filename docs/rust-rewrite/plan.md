@@ -289,7 +289,7 @@ Checkpoint: 家人電腦裝的是 GitHub Release 的 2.0.0,之後的版本會自
 ### W-08 — 發布與自動更新
 
 - [x] updater 金鑰：私鑰與密碼進 Actions secret(私鑰從檔案直接設，不經過對話)
-- [ ] 私鑰檔另外離線備份，位置寫進 `CLAUDE.md`(gap:目前只寫了原檔位置，等 Bobo 告知備份位置)
+- [ ] 私鑰檔與密碼另外離線備份 (removed: 移到 W-09,家人安裝 2.0.0 前完成;見 Deviation)
 - [x] release workflow:打 tag → NSIS 安裝檔 + `latest.json`,正式、標為 latest;`installMode: "passive"`,只在啟動且佇列空時安裝
 - [x] app 圖示(原稿 `src-tauri/icons/app-icon.svg`)
 - [x] Verify: 發 2.0.0-rc.1 → rc.2,已裝的 rc.1 啟動後自動更新到 rc.2;安裝檔 ≤ 15 MB
@@ -307,10 +307,14 @@ Evidence:
 
 Deviation:
 - 金鑰原本在對話框用 `--ci -p` 產生 → 密碼出現在對話紀錄 → 改在使用者自己的 PowerShell 互動輸入，重新產生金鑰與密碼(還沒簽過任何東西，換掉沒有成本)
+- 金鑰離線備份原本是 W-08 的步驟 → 移到 W-09 家人安裝前 → 2026-10-10 Bobo 還沒有這台電腦以外的備份，而真正不能再換金鑰的時間點是家人裝了 2.0.0 之後
 - 發現：安裝位置就是 app 的資料夾(`%LOCALAPPDATA%\youtube-to-your-format`)。解除安裝只刪自己裝的檔、`RMDir` 不遞迴，所以工具與設定不會被刪;但「刪除 app 資料」勾選框刪的是 `%LOCALAPPDATA%\<identifier>`,對我們沒作用，解除安裝後會留下約 120 MB 工具 → 寫進 vault backlog,不在 W-08 處理
+
+Done: PR #9 · verify: manual: 安裝 v2.0.0-rc.1 後打開，自己更新並重新打開成 v2.0.0-rc.2;安裝檔 4.4 MB → pass · verify: `npm test` and `npm run rs:clippy` → pass · note: 金鑰離線備份移到 W-09 家人安裝前
 
 ### W-09 — 上線到家人電腦
 
+- [ ] **家人安裝前**:updater 私鑰檔與密碼備份到這台電腦以外(密碼管理器、隨身碟或雲端，兩者不放同一處),`CLAUDE.md` 改成實際的備份方式
 - [ ] 在沒有管理員權限的帳號跑完 `CLAUDE.md` 手動 QA 清單
 - [ ] 補驗前面留下的手動缺口，驗完回到該項目寫 `Done:`:注音搜尋(W-03)、按「複製問題資訊」(W-05)、檔案對話框與拖檔(W-06)、舊資料夾提示與 DevTools 對比(W-07)
 - [ ] 家人電腦：解除安裝舊版、安裝 2.0.0、確認舊資料夾提示

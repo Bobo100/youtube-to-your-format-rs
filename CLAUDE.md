@@ -48,7 +48,7 @@ npm run rs:build-debug             # 不打包的 debug exe(內嵌前端,不需 
 
 **自動更新只在啟動時、佇列還沒開始前做**(`app_update.rs`):Windows 的安裝程式會關掉 app。檢查最多 20 秒、下載最多 10 分鐘，失敗就照用目前版本;不要把 timeout 設在 updater builder 上(它算整個請求，慢速網路永遠下載不完)。debug build 不檢查更新。
 
-**updater 金鑰**:私鑰在 Actions secret `TAURI_SIGNING_PRIVATE_KEY`(密碼 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`),公鑰寫在 `tauri.conf.json`。**私鑰檔與密碼另外由 Bobo 備份**:密碼在 Bobo 的密碼管理器，私鑰檔原檔在 A 電腦 `%USERPROFILE%\.tauri\ytf-updater.key`。兩者遺失任一個，已安裝的 app 就再也收不到更新(只能請家人手動重裝)。不要換公鑰。
+**updater 金鑰**:私鑰在 Actions secret `TAURI_SIGNING_PRIVATE_KEY`(密碼 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`),公鑰寫在 `tauri.conf.json`。**私鑰檔與密碼要另外離線備份**(rust-rewrite/W-09 家人安裝前完成):私鑰檔原檔在 Bobo 的 A 電腦 `%USERPROFILE%\.tauri\ytf-updater.key`。兩者遺失任一個，已安裝的 app 就再也收不到更新(只能請家人手動重裝)。家人裝了之後不要換公鑰:舊版只認這把。
 
 **圖示**:原稿 `src-tauri/icons/app-icon.svg`,改完跑 `npx tauri icon src-tauri/icons/app-icon.svg -o src-tauri/icons`,再刪掉產生的 `android/`、`ios/`、`64x64.png`(只出 Windows)。
 
