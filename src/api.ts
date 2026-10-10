@@ -15,6 +15,22 @@ export function prepareTools(): Promise<void> {
   return invoke("prepare_tools");
 }
 
+export type AppUpdateProgress = {
+  version: string;
+  received: number;
+  total: number | null;
+};
+
+/** Resolves false when there is no newer release or it could not be installed.
+ * When an update installs, the installer closes the app before this resolves. */
+export function installAppUpdate(): Promise<boolean> {
+  return invoke("install_app_update");
+}
+
+export function onAppUpdateProgress(handler: (progress: AppUpdateProgress) => void): Promise<UnlistenFn> {
+  return listen<AppUpdateProgress>("app-update-progress", (event) => handler(event.payload));
+}
+
 export function onToolsProgress(handler: (progress: ToolsProgress) => void): Promise<UnlistenFn> {
   return listen<ToolsProgress>("tools-progress", (event) => handler(event.payload));
 }

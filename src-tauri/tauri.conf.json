@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "youtube-to-your-format",
   "mainBinaryName": "youtube-to-your-format",
-  "version": "2.0.0",
+  "version": "2.0.0-rc.2",
   "identifier": "dev.bobo100.youtubetoyourformat",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -24,9 +24,17 @@
       "csp": "default-src 'self'; img-src 'self' data: https://i.ytimg.com; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUyRjhCNDQxMkE1NzQ2MjUKUldRbFJsY3FRYlQ0NGpXNHVxZTA0cU5Sd0FvSERVNWNtRWRoQ1hrMkpaNG95ak9qeDZJNXpuMHQK",
+      "endpoints": ["https://github.com/Bobo100/youtube-to-your-format-rs/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "windows": {
       "webviewInstallMode": { "type": "embedBootstrapper" },
       "nsis": {

@@ -1,14 +1,15 @@
-import { preparingView } from "../preparing";
-import type { ToolsProgress } from "../api";
+import { preparingView, updatingView } from "../preparing";
+import type { AppUpdateProgress, ToolsProgress } from "../api";
 import { errorMessage, t } from "../i18n";
 
 type Props = {
   progress: ToolsProgress | null;
+  update: AppUpdateProgress | null;
   error: string | null;
   onRetry: () => void;
 };
 
-export function Preparing({ progress, error, onRetry }: Props) {
+export function Preparing({ progress, update, error, onRetry }: Props) {
   if (error) {
     return (
       <section className="center" role="alert">
@@ -20,10 +21,10 @@ export function Preparing({ progress, error, onRetry }: Props) {
     );
   }
 
-  const view = preparingView(progress);
+  const view = update ? updatingView(update) : preparingView(progress);
   return (
     <section className="center" aria-live="polite">
-      <p className="big">{t("preparingTitle")}</p>
+      <p className="big">{t(update ? "updatingTitle" : "preparingTitle")}</p>
       <div
         className={view.percent === null ? "bar indeterminate" : "bar"}
         role="progressbar"

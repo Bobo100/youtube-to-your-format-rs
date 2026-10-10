@@ -1,4 +1,4 @@
-import type { ToolsProgress } from "./api";
+import type { AppUpdateProgress, ToolsProgress } from "./api";
 import { t } from "./i18n";
 
 export type PreparingView = {
@@ -18,4 +18,9 @@ export function preparingView(progress: ToolsProgress | null): PreparingView {
     percent: Math.round((progress.step - 1 + within) * stepShare),
     detail: t("preparingStep", { step: progress.step, steps: progress.steps }),
   };
+}
+
+export function updatingView(update: AppUpdateProgress): PreparingView {
+  const percent = update.total ? Math.min(Math.round((update.received / update.total) * 100), 100) : null;
+  return { percent, detail: t("updatingHint") };
 }
