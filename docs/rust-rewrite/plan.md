@@ -310,7 +310,7 @@ Deviation:
 - 金鑰離線備份原本是 W-08 的步驟 → 移到 W-09 家人安裝前 → 2026-10-10 Bobo 還沒有這台電腦以外的備份，而真正不能再換金鑰的時間點是家人裝了 2.0.0 之後
 - 發現：安裝位置就是 app 的資料夾(`%LOCALAPPDATA%\youtube-to-your-format`)。解除安裝只刪自己裝的檔、`RMDir` 不遞迴，所以工具與設定不會被刪;但「刪除 app 資料」勾選框刪的是 `%LOCALAPPDATA%\<identifier>`,對我們沒作用，解除安裝後會留下約 120 MB 工具 → 寫進 vault backlog,不在 W-08 處理
 
-Done: PR #9 · verify: manual: 安裝 v2.0.0-rc.1 後打開，自己更新並重新打開成 v2.0.0-rc.2;安裝檔 4.4 MB → pass · verify: `npm test` and `npm run rs:clippy` → pass · note: 金鑰離線備份移到 W-09 家人安裝前
+Done: PR #10 · verify: manual: 安裝 v2.0.0-rc.1 後打開，自己更新並重新打開成 v2.0.0-rc.2;安裝檔 4.4 MB → pass · verify: `npm test` and `npm run rs:clippy` → pass · note: 金鑰離線備份移到 W-09 家人安裝前
 
 ### W-09 — 上線到家人電腦
 
