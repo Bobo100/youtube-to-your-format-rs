@@ -88,7 +88,7 @@ Tauri app 是 GUI 程式。用 `std::process::Command` 直接開 yt-dlp / ffmpeg
 | `enqueue(items, format)` | `format` = `audio` \| `video` → `JobId[]` |
 | `cancel(job_id)` | 取消、結束 process tree、清掉暫存檔 |
 | `convert(path, target)` | 本機檔 + `audio` \| `video` → `JobId`(與下載共用 Job 與事件) |
-| `open_folder(path)` | 用檔案總管打開並選取檔案 |
+| `open_folder(job_id)` | 用檔案總管打開並選取該 Job 的輸出檔;只接受 app 自己產出的檔，檔案不見時改開它所在的資料夾 |
 | `get_settings()` / `set_settings(s)` | 讀寫設定 |
 | `copy_diagnostics(job_id)` | 把錯誤資訊、工具版本與 hash、最近 log 放進剪貼簿 |
 
@@ -159,9 +159,9 @@ yt-dlp 一律帶 `--js-runtimes deno:<bin 路徑>\deno.exe`,不依賴系統 PATH
 ### 4. 檔名與路徑
 
 - Rust 先算出唯一檔名:用影片標題,同名的話依序加 ` (2)`、` (3)`
-- 用 `-o` 指定完整路徑(副檔名用最終格式),並加 `--no-overwrites --trim-filenames 150`
+- 用 `-o` 指定完整路徑(副檔名用最終格式),並加 `--no-overwrites`
   - yt-dlp 遇到同名檔預設是跳過,不會自己編號
-  - 中文長標題放在深層資料夾可能超過 MAX_PATH
+- 標題由 `naming::sanitize` 截到 100 個 UTF-16 unit:中文長標題放在深層資料夾可能超過 MAX_PATH,要留空間給資料夾與 `.f299.mp4.part` 這類後綴
 - 用 `--print after_move:filepath` 取得實際輸出路徑,寫進 `output_path`,不用猜
 - 輸出到設定的資料夾,預設 `下載\YouTube`
 
