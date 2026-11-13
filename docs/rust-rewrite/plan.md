@@ -1,6 +1,6 @@
 ---
 state: in-progress
-updated: 2026-10-10
+updated: 2026-11-13
 plan_format: 2
 ---
 
@@ -20,58 +20,11 @@ Checkpoint: debug exe 可以搜尋、下載 MP3 / MP4、轉本機檔案、改設
 
 ### W-01 — 專案骨架與 CI
 
-- [x] GitHub repo `Bobo100/youtube-to-your-format-rs`(public,同舊 repo)
-- [x] Tauri 2 + Vite + React + TypeScript 骨架,app 名稱、identifier、視窗大小;NSIS currentUser 安裝
-- [x] `CLAUDE.md`(架構心智模型、鐵則：子行程只走 `process.rs`、doc map、commit 格式、手動 QA 清單)+ `AGENTS.md` 指向 `CLAUDE.md`
-- [x] Vitest、ESLint、`cargo test` / `clippy`;GitHub Actions Windows runner 在 PR 上跑
-- [x] Verify: CI 綠燈;`npm run tauri dev` 開出空視窗
-
-Evidence: PR #2。本機 `npm run lint`、`npm test`(1 passed)、`npm run build`、`npm run rs:clippy`、`npm run rs:test` 通過;CI run 37511365158 check pass(6m21s);debug exe 啟動後視窗標題「YouTube 下載」、中文正常(截圖)。
-Deviation: 驗證視窗原本用 `npm run tauri dev` → 改用 `npm run rs:build-debug` 啟動內嵌前端的 debug exe → 不必另開 dev server → 同上截圖。另外本機沒有 MSVC build tools,Rust 指令改走 GNU toolchain wrapper(沿用 bai-e-desktop-pet),lib 只留 `rlib`(windows-gnu 下 cdylib 超過 ld 的 export ordinal 上限);CI / release 仍用 MSVC。
-
 Done: PR #2 · verify: `npm test` and `npm run rs:test` → pass · note: CI run 37511365158 pass;debug exe 開出視窗
 
 ### W-02 — 子行程與工具安裝(`process.rs`、`tools`)
 
-- [x] `process.rs`:`CREATE_NO_WINDOW`、Job Object + `KILL_ON_JOB_CLOSE`、UTF-8、區分「不見了 / 被拒」
-- [x] ffmpeg:選定固定版本、確認含 ffprobe(removed from scope: 重新上傳到 `tools-ffmpeg-<版本>` → 改直接用 GyanD,見 Deviation)
-- [x] Deno:選定版本並確認符合 yt-dlp 最低需求
-- [x] 三個工具的下載(續傳、重試)、SHA-256 驗證、解壓到 `%LOCALAPPDATA%\youtube-to-your-format\bin\`
-- [x] `--js-runtimes` 指向 Deno — W-03 PR #4 用 `ytdlp::base_args` 做好
-- [x] 第一次準備畫面 + `tools-progress`
-- [x] Verify: 單元測試(SHA2-256SUMS 解析、驗證；版本比較移到 W-05);手動：刪掉 `bin\` 後重開會重新準備，中途斷網可續傳;全程無 console 視窗
-
-Evidence: PR #3。`npm run rs:test` 27 passed,涵蓋:
-- process:隱藏子行程的輸出、Missing 分類、防毒錯誤碼 5 / 225 / 226 判成 Blocked、kill_tree、卡住的子行程逾時後整組結束
-- 工具安裝:SHA2-256SUMS 解析、hash 錯就刪掉 `.part`、`.part` 以 hash 命名並清掉舊版本的、4xx 不重試、換檔保留 `.old` 與 rollback、zip 解壓與同名去重、`state.json` 原子寫入與損毀 fallback、`needed()` 判斷、錯誤代碼對應
-
-其他驗證:
-- `-- --ignored` 2 passed:真的把三個工具裝到 temp dir,並各自跑 `--version`(17.1s);先放 3 MB `.part` 再下載，第一筆進度 > 3 MB,證明 Range 續傳
-- `npm test` 5 passed
-- 手動：刪掉 `bin\` 後啟動 debug exe,顯示準備畫面(截圖),完成後顯示「準備好了」;`bin\` 只剩三個工具和 `state.json`,沒有殘留的暫存檔
-- 準備過程中列出所有有視窗的 process,沒有 yt-dlp / ffmpeg / deno / conhost
-- 第二次啟動時，第二個 process 會自己結束(single-instance)
-
-對抗性 review 修正：
-- 加 single-instance
-- 驗證工具時加 60s timeout
-- 子行程先 suspended,放進 Job Object 後才 resume
-- `SetErrorMode`,缺 DLL 時直接失敗，不跳出看不到的對話框
-- 新增錯誤代碼 github_busy / disk_full / 防毒錯誤碼
-- 改名遇到防毒鎖檔會重試
-- 驗證失敗就 rollback
-- `.part` 以 hash 命名
-- 檢查 `Content-Range` 的起點
-- 前端先註冊 listener 再開始準備
-
-L7(整體下載時限)沒修，寫進 vault backlog。
-Deviation:
-- ffmpeg 來源:原本把 BtbN build 重新上傳到自己 repo 的 release → 改成直接下載 GyanD/codexffmpeg 9.0.2 essentials 7z → BtbN gpl 版 zip 要 184 MB;GyanD 只有 34 MB,而且從 2020 年起每個有版本號的 release 都還在 → hash 對過 gyan.dev 公布的 `.sha256`。
-- 版本比較:原本放在 W-02 → 移到 W-05 → 只有 yt-dlp 更新會用到。
-- 「中途斷網」:原本手動拔網路測 → 改用強制結束 app 再重開，加上 Range 續傳的整合測試 → 兩者都會留下 `.part`,走的是同一條路徑。
-- 架構:原本把 `process.rs`、`tools/` 放在 `src-tauri/src/` → 改放進新的 workspace crate `ytf-core`,Tauri crate 設 `test = false` → 連結 Tauri 的測試執行檔一跑就 `STATUS_ENTRYPOINT_NOT_FOUND` → design / CLAUDE.md 已同步更新。
-
-Done: PR #3 · verify: `npm test`, `npm run rs:test` and `npm run rs:test -- --ignored` → pass · note: 手動刪 bin 後重新準備、全程無 console 視窗;中途斷網改用強制結束後重開加 Range 續傳測試驗證(見 Deviation)
+Done: PR #3 · verify: `npm test`, `npm run rs:test` and `npm run rs:test -- --ignored` → pass · note: 手動刪 bin 後重新準備、全程無 console 視窗;中途斷網改用強制結束後重開加 Range 續傳測試驗證(見 [evidence/w-02.md](evidence/w-02.md))
 
 ### W-03 — 查詢與主畫面卡片(`lookup`)
 
@@ -96,40 +49,6 @@ Evidence: PR #4。`npm run rs:test` 36 passed,新增：
 Deviation:網址 / 關鍵字判斷原本打算在前端用 Vitest 測 → 改由 Rust 的 `Input::parse` 判斷，前端只把文字送過去 → 只在一處判斷，不會有兩套規則 → 測試在 `ytdlp::input`。
 
 ### W-04 — 下載排隊與進度(`queue`、`ytdlp`)
-
-- [x] 一次一個的 worker、`job-updated` 整個快照
-- [x] 進度 JSON(兩條 stream 合併)、`processing` 不定進度
-- [x] yt-dlp 一律帶 `--js-runtimes deno:<bin>\deno.exe`(W-02 留下的缺口)— 已在 W-03 用 `ytdlp::base_args` 做好,PR #4 的單元測試涵蓋
-- [x] 唯一檔名、`-o`、`--no-overwrites`、`--print after_move:filepath`(`--trim-filenames` 改成自己截到 120 字，見 Deviation)
-- [x] 影片格式選擇器 + ffprobe 檢查，非 H.264 才轉;音樂 mp3 + metadata;`cookies.txt`
-- [x] 取消：結束 Job Object + 清暫存檔
-- [x] Verify: 進度解析與檔名單元測試(真實輸出 fixture);`cargo test -- --ignored` 下載短 CC 影片音樂 / 影片各一次;手動取消後無殘檔
-
-Evidence: PR #5。`npm run rs:test` 62 passed,新增：
-- naming:Windows 不允許的字元、保留名稱、長標題、`(2)` 判斷不分大小寫、`%` 跳脫
-- 進度：兩條 stream 合成一條、處理階段、estimate fallback、最終路徑
-- 下載參數：音樂 / 影片 / cookies
-- 錯誤代碼:format_unavailable、network
-- queue(用假的 runner 測):依序一次一個、取消排隊中的不會執行、取消執行中的不影響下一個、失敗帶錯誤碼且不擋後面的
-- 清檔只刪這個下載的檔案
-- queue:同一首同格式不重複排入、批次略過已存過的、每個發出的 snapshot `rev` 都比前一個大
-- 單一 stream 的影片進度能跑到 100%;檔名長度用 UTF-16 計算;onedir 資料夾的解壓、替換與 rollback,以及拒絕跳出資料夾的壓縮檔項目
-
-`-- --ignored` 7 passed(含 W-02 / W-03 的整合測試):
-- 真的下載「Me at the zoo」音樂 + 影片：輸出 mp3 和 mp4,影片是 h264,資料夾只剩這兩個檔
-- 下載長片到一半取消：狀態 Canceled,資料夾是空的
-- ffmpeg 產生的 VP9 會轉成 H.264,暫存檔已清掉
-- 跑完取消測試後 `%TEMP%\_MEI*` 數量不變(onedir 版不再漏)
-
-`npm test` 11 passed。手動用 debug exe 貼網址，按「存成音樂」:下載中顯示進度條、「快好了，正在處理…」和取消按鈕；完成後顯示「好了！已存到『下載 › YouTube』」和打開資料夾(兩張截圖)。測試產生的檔案已刪除。
-
-Deviation:
-- 檔名長度：原本用 `--trim-filenames 150` → 改由 `naming::sanitize` 自己截到 120 字 → 我們是給 yt-dlp 已經組好的檔名，自己截比較確定 → naming 單元測試。
-- 同一首先存音樂再存影片時，影片會叫 `歌 (2).mp4` → 每個下載的檔名開頭必須獨一無二，取消時才能安全刪掉所有以它開頭的檔案 → runner 整合測試。
-- 「打開資料夾」:原本前端直接呼叫 opener → 改成 Rust 的 `open_folder(job_id)` → 只能打開這個 app 產生的檔案，不開放任意路徑；檔案被搬走時改開它所在的資料夾。
-- yt-dlp 版本：原本用 onefile `yt-dlp.exe`(W-02)→ 改成 onedir `yt-dlp_win.zip`,裝在 `bin\yt-dlp\` → review 實測每取消一次就在 `%TEMP%` 漏一個 24 MB 的 `_MEI*` → 修好後取消測試前後數量不變;design / CLAUDE.md 已同步。
-
-對抗性 review 修正:onedir yt-dlp;批次與重複點擊不重複排入;`rev` 與只在狀態真的改變時才發 event;`list_jobs` 讓重新整理後能同步;焦點交給新出現的按鈕;live region 只播報狀態、不唸百分比;ffprobe 失敗時保留檔案；轉檔後換檔會重試；轉檔一律輸出 `.mp4`;已取消的工作不再啟動 yt-dlp;清暫存檔會重試;cookies 每次用暫存複本，查詢時也帶上;單一 stream 的進度修正;檔名用 UTF-16 長度計算。沒修：worker panic(release 是 `panic=abort`,panic 時整個 app 直接結束);長片轉檔沒有進度、「其他下載」不會收起來(兩項都寫進 vault backlog)。
 
 Done: PR #5 · verify: `npm test`, `npm run rs:test` and `npm run rs:test -- --ignored` → pass · note: 真實下載音樂 / 影片;取消後資料夾為空由整合測試驗證，手動只驗了下載進度與完成畫面
 
@@ -288,42 +207,9 @@ Checkpoint: 家人電腦裝的是 GitHub Release 的 2.0.0,之後的版本會自
 
 ### W-08 — 發布與自動更新
 
-- [x] updater 金鑰：私鑰與密碼進 Actions secret(私鑰從檔案直接設，不經過對話)
-- [ ] 私鑰檔與密碼另外離線備份 (removed: 移到 W-09,家人安裝 2.0.0 前完成;見 Deviation)
-- [x] release workflow:打 tag → NSIS 安裝檔 + `latest.json`,正式、標為 latest;`installMode: "passive"`,只在啟動且佇列空時安裝
-- [x] app 圖示(原稿 `src-tauri/icons/app-icon.svg`)
-- [x] Verify: 發 2.0.0-rc.1 → rc.2,已裝的 rc.1 啟動後自動更新到 rc.2;安裝檔 ≤ 15 MB
-
-Evidence:
-- release run 38017280242(v2.0.0-rc.1)與 38017703978(v2.0.0-rc.2)都成功：正式、非 prerelease,`releases/latest` 指向 rc.2;assets 有 `*-setup.exe`、`.sig`、`latest.json`
-- 安裝檔 4.4 MB(workflow 的大小檢查步驟)
-- 這台電腦用 `/S` 安裝 rc.1(currentUser,裝在 `%LOCALAPPDATA%\youtube-to-your-format`),打開後 log:`installing app update 2.0.0-rc.1 -> 2.0.0-rc.2` → `app update downloaded, starting the installer` → 2 秒後 `starting youtube-to-your-format 2.0.0-rc.2`;exe 與解除安裝登錄的版本都變成 2.0.0-rc.2,`bin\` 的工具與設定保留
-- `npm test` 16 passed、`npm run lint`、`npm run rs:clippy` 通過;debug exe 啟動正常(updater plugin 讀得懂設定)
-
-對抗性 review 修正：
-- updater builder 的 timeout 算整個請求，慢速網路下載不完 → 改成檢查 20 秒、下載 10 分鐘，各自用 tokio timeout
-- 更新結束後才到的 progress event 不再把畫面切回「正在更新」
-- 找不到安裝檔時大小檢查會失敗，不再靜默通過
-
-Deviation:
-- 金鑰原本在對話框用 `--ci -p` 產生 → 密碼出現在對話紀錄 → 改在使用者自己的 PowerShell 互動輸入，重新產生金鑰與密碼(還沒簽過任何東西，換掉沒有成本)
-- 金鑰離線備份原本是 W-08 的步驟 → 移到 W-09 家人安裝前 → 2026-10-10 Bobo 還沒有這台電腦以外的備份，而真正不能再換金鑰的時間點是家人裝了 2.0.0 之後
-- 發現：安裝位置就是 app 的資料夾(`%LOCALAPPDATA%\youtube-to-your-format`)。解除安裝只刪自己裝的檔、`RMDir` 不遞迴，所以工具與設定不會被刪;但「刪除 app 資料」勾選框刪的是 `%LOCALAPPDATA%\<identifier>`,對我們沒作用，解除安裝後會留下約 120 MB 工具 → 寫進 vault backlog,不在 W-08 處理
-
 Done: PR #10 · verify: manual: 安裝 v2.0.0-rc.1 後打開，自己更新並重新打開成 v2.0.0-rc.2;安裝檔 4.4 MB → pass · verify: `npm test` and `npm run rs:clippy` → pass · note: 金鑰離線備份移到 W-09 家人安裝前
 
 ### W-10 — 解除安裝可以清掉工具與設定
-
-接續 W-08 發現的問題。每次安裝與自動更新都會換掉 `uninstall.exe`,所以已裝的舊版也會在下次更新後拿到這個 hook;排在家人安裝前，是為了 W-09 的 QA 能一起驗。
-
-- [x] `src-tauri/windows/hooks.nsh` 的 `NSIS_HOOK_POSTUNINSTALL`:勾「刪除 app 資料」且不是更新時，刪掉 `%LOCALAPPDATA%\youtube-to-your-format` 裡的 `bin\`、`logs\`、`settings*.json`,再移掉空資料夾;只刪 app 寫的名字。不勾或靜默解除安裝時全部保留
-- [x] Verify: 發 2.0.0-rc.3(CI 第一次編譯 hook);rc.2 自動更新到 rc.3 後 `bin\` 與設定還在(更新不跑解除安裝，這項只是回歸檢查);`uninstall.exe /S` 後 `bin\` 還在;資料夾放一個自己的檔，到 Windows「應用程式」解除安裝並勾選後，只剩那個檔與資料夾(`bin\yt-dlp\_internal` 也刪掉)
-
-Evidence:
-- release run 38040203581(v2.0.0-rc.3)成功，正式、非 prerelease;安裝檔 4.4 MB。PR #11 之前本機 GNU debug NSIS bundle 先編譯過，產生的 installer.nsi 有 include hook
-- 這台電腦的 rc.2 打開後 log:`installing app update 2.0.0-rc.2 -> 2.0.0-rc.3` → 3 秒後 `starting youtube-to-your-format 2.0.0-rc.3`;`bin\`(324 MB)與 `logs\` 保留
-- `uninstall.exe /S`:程式移除,`bin\`、`logs\` 保留
-- 重裝 rc.3、資料夾放 `my-note.txt`,Bobo 從 Windows「應用程式」解除安裝並勾「刪除 app 資料」:資料夾只剩 `my-note.txt`(`bin\yt-dlp\_internal` 也刪掉),`%LOCALAPPDATA%\dev.bobo100.youtubetoyourformat` 與解除安裝登錄都不見
 
 Done: PR #11 · verify: manual: rc.2 自動更新到 rc.3 後工具保留;靜默解除安裝保留;勾「刪除 app 資料」解除安裝後只剩使用者自己的檔 → pass · note: 工具實際約 324 MB,不是先前估的 120 MB
 
