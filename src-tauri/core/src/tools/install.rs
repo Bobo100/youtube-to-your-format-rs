@@ -90,7 +90,10 @@ pub fn extract_zip_tree(archive: &Path, dir: &Path) -> io::Result<usize> {
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).map_err(io::Error::other)?;
         let Some(relative) = entry.enclosed_name() else {
-            return Err(io::Error::other(format!("unsafe archive entry {}", entry.name())));
+            return Err(io::Error::other(format!(
+                "unsafe archive entry {}",
+                String::from_utf8_lossy(entry.name_raw())
+            )));
         };
         let out = staging.join(relative);
         if entry.is_dir() {
@@ -115,7 +118,7 @@ pub fn extract_zip(archive: &Path, wanted: &[&str], dir: &Path) -> io::Result<us
     let mut found = HashSet::new();
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).map_err(io::Error::other)?;
-        let Some(name) = matching(entry.name(), wanted) else {
+        let Some(name) = matching(&String::from_utf8_lossy(entry.name_raw()), wanted) else {
             continue;
         };
         if found.insert(name) {
