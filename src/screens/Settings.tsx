@@ -2,11 +2,13 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useRef, type KeyboardEvent } from "react";
 import type { SettingsPatch, SettingsView } from "../api";
 import { dirLabel, errorMessage, t, type MessageKey } from "../i18n";
+import { UpdateCheck } from "../components/UpdateCheck";
 import { FolderIcon } from "../icons";
 
 type Props = {
   view: SettingsView;
   error: string | null;
+  queueBusy: boolean;
   onChange: (patch: SettingsPatch) => void;
 };
 
@@ -59,7 +61,7 @@ function Segmented<T extends string>({
   );
 }
 
-export function Settings({ view, error, onChange }: Props) {
+export function Settings({ view, error, queueBusy, onChange }: Props) {
   const { settings } = view;
   const chosenMissing = settings.outputDir !== null && settings.outputDir !== view.outputDir;
 
@@ -122,6 +124,7 @@ export function Settings({ view, error, onChange }: Props) {
           {errorMessage(error, "error.settings_save_failed")}
         </p>
       )}
+      <UpdateCheck queueBusy={queueBusy} />
       <p className="help">
         {t("versionLine", { app: view.appVersion, ytdlp: view.ytdlpVersion ?? t("unknownVersion") })}
       </p>

@@ -132,7 +132,7 @@ yt-dlp 一律帶 `--js-runtimes deno:<bin 路徑>\deno.exe`,不依賴系統 PATH
 ### app 自我更新
 
 - 使用 `tauri-plugin-updater`,讀 repo GitHub Releases 的 `latest.json`,用 updater 金鑰驗簽
-- 安裝時機:Windows 上執行安裝步驟時 app 會被關掉,所以只在**啟動時、佇列還沒開始前**安裝。設 `installMode: "passive"`,只顯示進度條,不必按任何東西
+- 安裝時機:Windows 上執行安裝步驟時 app 會被關掉,所以自動安裝只在**啟動時、佇列還沒開始前**做;設定畫面的手動「檢查更新」找到新版後要使用者按「更新並重新打開」才安裝,佇列有工作時兩條路都不更新。設 `installMode: "passive"`,只顯示進度條,不必按任何東西
 - **updater 私鑰**:放 GitHub Actions secret,同時把私鑰與密碼**另外離線備份**,備份位置寫在 repo `CLAUDE.md`。私鑰遺失 = 已安裝的 app 永遠無法再更新
 - **release 必須是正式(非 draft)且標為 latest**:tauri-action 預設建 draft,draft 期間 `releases/latest/download/latest.json` 拿不到
 - 安裝檔不做 Authenticode 簽章:第一次安裝(由 Bobo 執行)會看到 SmartScreen,之後的自動更新不受影響

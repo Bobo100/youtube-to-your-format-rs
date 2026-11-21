@@ -27,6 +27,17 @@ export function installAppUpdate(): Promise<boolean> {
   return invoke("install_app_update");
 }
 
+/** Resolves to the newer version, or null when this one is the latest. Rejects with an error code. */
+export function checkAppUpdate(): Promise<string | null> {
+  return invoke("check_app_update");
+}
+
+/** Checks again and installs the newest release (it may be newer than the one shown); on Windows
+ * the installer closes the app. Resolves false when nothing is newer. Rejects with an error code. */
+export function installAppUpdateNow(): Promise<boolean> {
+  return invoke("install_app_update_now");
+}
+
 export function onAppUpdateProgress(handler: (progress: AppUpdateProgress) => void): Promise<UnlistenFn> {
   return listen<AppUpdateProgress>("app-update-progress", (event) => handler(event.payload));
 }

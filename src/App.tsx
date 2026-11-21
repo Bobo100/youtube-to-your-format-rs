@@ -23,7 +23,7 @@ import {
   type VideoCard,
 } from "./api";
 import { CloseDialog } from "./components/CloseDialog";
-import { upsertJob } from "./jobs";
+import { isActive, upsertJob } from "./jobs";
 import { dirLabel, setLanguage, t } from "./i18n";
 import { BackIcon, ConvertIcon, GearIcon } from "./icons";
 import { Convert } from "./screens/Convert";
@@ -255,7 +255,7 @@ export default function App() {
               <Home jobs={jobs} onSave={save} />
             </div>
             {screen === "convert" && <Convert jobs={jobs} />}
-            {screen === "settings" && <Settings view={view} error={settingsError} onChange={changeSettings} />}
+            {screen === "settings" && <Settings view={view} error={settingsError} queueBusy={jobs.some(isActive)} onChange={changeSettings} />}
           </>
         )}
       </main>
