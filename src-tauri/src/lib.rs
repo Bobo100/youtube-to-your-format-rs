@@ -53,6 +53,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_update::install_app_update,
+            app_update::check_app_update,
+            app_update::install_app_update_now,
             commands::prepare_tools,
             commands::lookup,
             commands::enqueue,

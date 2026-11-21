@@ -47,7 +47,7 @@ npm run rs:build-debug             # 不打包的 debug exe(內嵌前端,不需 
 2. merge 進 main 後打 tag `v<version>` 並 push:`.github/workflows/release.yml` 產出 NSIS 安裝檔、`.sig` 與 `latest.json`,發布成**正式、非 prerelease** 的 release(已安裝的 app 讀 `releases/latest/download/latest.json`,draft 或 prerelease 都不會被當成 latest)
 3. workflow 最後一步檢查安裝檔 ≤ 15 MB
 
-**自動更新只在啟動時、佇列還沒開始前做**(`app_update.rs`):Windows 的安裝程式會關掉 app。檢查最多 20 秒、下載最多 10 分鐘，失敗就照用目前版本;不要把 timeout 設在 updater builder 上(它算整個請求，慢速網路永遠下載不完)。debug build 不檢查更新。
+**自動更新在啟動時、佇列還沒開始前做;設定畫面另有手動「檢查更新」,有新版要使用者按了才安裝**(`app_update.rs`):Windows 的安裝程式會關掉 app,所以佇列有工作時兩條路都不更新。檢查最多 20 秒、下載最多 10 分鐘，啟動時失敗就照用目前版本(手動則顯示錯誤);不要把 timeout 設在 updater builder 上(它算整個請求，慢速網路永遠下載不完)。debug build 啟動時不檢查更新;手動檢查可用,但安裝會被拒絕。
 
 **updater 金鑰**:私鑰在 Actions secret `TAURI_SIGNING_PRIVATE_KEY`(密碼 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`),公鑰寫在 `tauri.conf.json`。**私鑰檔與密碼要另外離線備份**(rust-rewrite/W-09 家人安裝前完成):私鑰檔原檔在 Bobo 的 A 電腦 `%USERPROFILE%\.tauri\ytf-updater.key`。兩者遺失任一個，已安裝的 app 就再也收不到更新(只能請家人手動重裝)。家人裝了之後不要換公鑰:舊版只認這把。
 
