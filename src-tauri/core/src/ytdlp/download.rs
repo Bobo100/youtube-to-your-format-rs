@@ -129,7 +129,12 @@ pub fn download_args(
     );
     match format {
         SaveFormat::Audio => args.extend(
-            ["-f", "ba/b", "-x", "--audio-format", "mp3", "--audio-quality", "0"].map(OsString::from),
+            [
+                "-f", "ba/b", "-x", "--audio-format", "mp3", "--audio-quality", "192K",
+                // CBR + ID3v2.3 + no Xing: older editors (PowerDirector) may misjudge VBR/ID3v2.4 duration.
+                "--postprocessor-args", "ffmpeg:-id3v2_version 3 -write_xing 0",
+            ]
+            .map(OsString::from),
         ),
         SaveFormat::Video => args.extend(
             [
@@ -233,6 +238,8 @@ mod tests {
     fn audio_extracts_mp3_into_an_escaped_template() {
         let a = args(SaveFormat::Audio, None);
         assert!(a.windows(2).any(|w| w == ["--audio-format", "mp3"]));
+        assert!(a.windows(2).any(|w| w == ["--audio-quality", "192K"]));
+        assert!(a.windows(2).any(|w| w == ["--postprocessor-args", "ffmpeg:-id3v2_version 3 -write_xing 0"]));
         assert!(a.windows(2).any(|w| w == ["--js-runtimes", r"deno:C:\bin\deno.exe"]));
         assert!(a.contains(&"--no-overwrites".to_owned()) && a.contains(&"--no-playlist".to_owned()));
         assert_eq!(
@@ -248,6 +255,7 @@ mod tests {
         let selector = &a[a.iter().position(|x| x == "-f").unwrap() + 1];
         assert!(selector.starts_with("bv*[vcodec^=avc1]") && selector.ends_with("/b"));
         assert!(a.windows(2).any(|w| w == ["--merge-output-format", "mp4"]));
+        assert!(!a.contains(&"--postprocessor-args".to_owned()));
         assert!(a.windows(2).any(|w| w == ["--cookies", r"C:\Users\a\cookies.txt"]));
     }
 

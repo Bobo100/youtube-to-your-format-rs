@@ -175,7 +175,7 @@ yt-dlp 一律帶 `--js-runtimes deno:<bin 路徑>\deno.exe`,不依賴系統 PATH
   - `-f "bv*[vcodec^=avc1][height<=1080]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b" --merge-output-format mp4`
   - 下載完用 ffprobe 檢查影片編碼:是 H.264 就結束,**不重新編碼**(舊版每次都 `--recode-video`,很慢)
   - 不是 H.264 才用 ffmpeg 轉成 H.264 + AAC,確保 Windows 內建播放器與 LINE 能播。`--recode-video` 只看容器,VP9 放在 mp4 裡它不會轉,所以不能用
-- **音樂**:`-f "ba/b" -x --audio-format mp3 --audio-quality 0 --embed-metadata`
+- **音樂**:`-f "ba/b" -x --audio-format mp3 --audio-quality 192K --postprocessor-args "ffmpeg:-id3v2_version 3 -write_xing 0" --embed-metadata`(固定 192k、ID3v2.3、不寫 Xing,舊版剪輯軟體可能誤判 VBR/ID3v2.4 檔的時長,成因未證實)
 - **cookies.txt**:照舊在 `~/cookies.txt`、`~/.config/yt-cookies/cookies.txt` 找,有就加 `--cookies`
 
 ## 轉檔(`convert`)
