@@ -115,7 +115,11 @@ pub fn ffmpeg_args(source: &Path, output: &Path, format: SaveFormat) -> Vec<std:
     args.push(source.as_os_str().to_owned());
     let rest: &[&str] = match format {
         // Only the first audio stream; subtitles / data streams would make ffmpeg fail.
-        SaveFormat::Audio => &["-map", "0:a:0", "-vn", "-sn", "-dn", "-c:a", "libmp3lame", "-q:a", "0", "-f", "mp3"],
+        // CBR + ID3v2.3 + no Xing: see download.rs (older editors can misjudge VBR/ID3v2.4 duration).
+        SaveFormat::Audio => &[
+            "-map", "0:a:0", "-vn", "-sn", "-dn", "-c:a", "libmp3lame", "-b:a", "192k",
+            "-id3v2_version", "3", "-write_xing", "0", "-f", "mp3",
+        ],
         SaveFormat::Video => &[
             "-map", "0:v:0?", "-map", "0:a:0?", "-sn", "-dn",
             // libx264 + yuv420p needs even sizes; 853x480 videos are common.
@@ -343,6 +347,8 @@ mod tests {
         let audio = strings(SaveFormat::Audio, "o.part");
         assert!(audio.windows(2).any(|w| w == ["-map", "0:a:0"]) && audio.contains(&"-sn".to_owned()));
         assert!(audio.windows(2).any(|w| w == ["-f", "mp3"]));
+        assert!(audio.windows(2).any(|w| w == ["-b:a", "192k"]) && !audio.contains(&"-q:a".to_owned()));
+        assert!(audio.windows(2).any(|w| w == ["-id3v2_version", "3"]) && audio.windows(2).any(|w| w == ["-write_xing", "0"]));
         let video = strings(SaveFormat::Video, "o.part");
         assert!(video.windows(2).any(|w| w == ["-c:v", "libx264"]));
         assert!(video.iter().any(|a| a.starts_with("scale=trunc(iw/2)*2")));
